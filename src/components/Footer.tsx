@@ -358,27 +358,6 @@ export const Footer: React.FC<FooterProps> = ({
                 </div>
               </form>
             )}
-
-            {/* Quick Portals */}
-            <div className="pt-1 w-full text-center sm:text-left">
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 text-center sm:text-left">
-                Enterprise Portals
-              </div>
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-                <button
-                  onClick={() => handleNav('admin')}
-                  className="text-xs px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 font-semibold cursor-pointer transition-colors"
-                >
-                  SuperAdmin
-                </button>
-                <button
-                  onClick={() => handleNav('client-portal')}
-                  className="text-xs px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 font-semibold cursor-pointer transition-colors"
-                >
-                  Client Portal
-                </button>
-              </div>
-            </div>
           </div>
         </div>
 

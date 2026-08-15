@@ -11,7 +11,6 @@ import {
   Cpu,
   Layers,
   ShoppingBag,
-  Briefcase,
   Building2,
   Users,
   GraduationCap,
@@ -19,9 +18,7 @@ import {
   Image,
   Mail,
   PhoneCall,
-  ShieldCheck,
   KeyRound,
-  ChevronDown,
   ChevronRight,
   Activity,
   FolderGit2
@@ -42,7 +39,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenEstimator,
 }) => {
   const [sidebarMenuOpen, setSidebarMenuOpen] = useState(false);
-  const [portalDropdownOpen, setPortalDropdownOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authRole, setAuthRole] = useState<'admin' | 'client'>('admin');
 
@@ -62,7 +58,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   const handleNavClick = (tab: NavigationTab) => {
     setActiveTab(tab);
     setSidebarMenuOpen(false);
-    setPortalDropdownOpen(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -122,62 +117,18 @@ export const Navbar: React.FC<NavbarProps> = ({
               })}
             </nav>
 
-            {/* Actions & Portals Switcher */}
+            {/* Actions */}
             <div className="hidden lg:flex items-center gap-2.5">
-              {/* Portals Dropdown */}
-              <div className="relative">
-                <button
-                  onClick={() => setPortalDropdownOpen(!portalDropdownOpen)}
-                  id="portal-switcher-btn"
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-200 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl transition-colors cursor-pointer"
-                >
-                  <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
-                  <span>Portals</span>
-                  <ChevronDown className="w-3 h-3 text-slate-400" />
-                </button>
-
-                {portalDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150">
-                    <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                      Workspaces
-                    </div>
-                    <button
-                      onClick={() => handleNavClick('admin')}
-                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-left text-slate-200 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
-                    >
-                      <ShieldCheck className="w-4 h-4 text-blue-400 shrink-0" />
-                      <div>
-                        <div className="font-bold">SuperAdmin Center</div>
-                        <div className="text-[10px] text-slate-400">CMS, Blogs, CRM, Data & Settings</div>
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => handleNavClick('client-portal')}
-                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-left text-slate-200 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
-                    >
-                      <Briefcase className="w-4 h-4 text-indigo-400 shrink-0" />
-                      <div>
-                        <div className="font-bold">Client Project Portal</div>
-                        <div className="text-[10px] text-slate-400">Milestones, Invoices, Support & Data</div>
-                      </div>
-                    </button>
-
-                    <div className="pt-2 border-t border-slate-800 mt-1">
-                      <button
-                        onClick={() => {
-                          setPortalDropdownOpen(false);
-                          setAuthRole('admin');
-                          setAuthModalOpen(true);
-                        }}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-semibold text-blue-400 hover:underline cursor-pointer"
-                      >
-                        <KeyRound className="w-3.5 h-3.5" />
-                        <span>Sign In / Reset Password</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <button
+                onClick={() => {
+                  setAuthRole('admin');
+                  setAuthModalOpen(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>Sign In</span>
+              </button>
 
               {/* AI Cost Estimator CTA */}
               {onOpenEstimator && (
@@ -306,58 +257,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                       </button>
                     );
                   })}
-                </div>
-              </div>
-
-              {/* Section 2: Enterprise Workspaces */}
-              <div className="pt-2 border-t border-slate-800/80">
-                <div className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                  Enterprise Workspaces
-                </div>
-                <div className="space-y-1.5">
-                  <button
-                    onClick={() => handleNavClick('admin')}
-                    className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs text-left border transition-all cursor-pointer ${
-                      activeTab === 'admin'
-                        ? 'bg-blue-950/60 border-blue-600 text-white'
-                        : 'bg-slate-900/80 border-slate-800 hover:bg-slate-800 text-slate-200'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center shrink-0">
-                        <ShieldCheck className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="font-bold text-slate-100">SuperAdmin Center</div>
-                        <div className="text-[10px] text-slate-400">CMS, CRM & Site Controls</div>
-                      </div>
-                    </div>
-                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-950 text-blue-400 border border-blue-800">
-                      ROOT
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => handleNavClick('client-portal')}
-                    className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs text-left border transition-all cursor-pointer ${
-                      activeTab === 'client-portal'
-                        ? 'bg-indigo-950/60 border-indigo-600 text-white'
-                        : 'bg-slate-900/80 border-slate-800 hover:bg-slate-800 text-slate-200'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-lg bg-indigo-600/20 text-indigo-400 flex items-center justify-center shrink-0">
-                        <Briefcase className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="font-bold text-slate-100">Client Portal</div>
-                        <div className="text-[10px] text-slate-400">Milestones, Invoices & SLA</div>
-                      </div>
-                    </div>
-                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-400 border border-indigo-800">
-                      PORTAL
-                    </span>
-                  </button>
                 </div>
               </div>
             </div>
