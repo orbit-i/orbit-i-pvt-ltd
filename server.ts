@@ -16,11 +16,24 @@ import {
   INITIAL_SUPPORT_TICKETS,
   INITIAL_AUDIT_LOGS,
 } from './src/data/initialData.js';
+import {
+  isDbConfigured,
+  initSchema,
+  getContent,
+  setContent,
+  listRows,
+  upsertRow,
+  deleteRow,
+  replaceAllRows,
+} from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// In-Memory Database Store with Full CRUD
+// In-memory mirror of the MySQL-backed store. This is a read cache, not the
+// source of truth — every mutation below writes through to MySQL first (or
+// immediately after) so the data actually survives process restarts and
+// serverless cold starts, unlike the pure in-memory version this replaced.
 const db = {
   settings: { ...INITIAL_SETTINGS },
   services: [...INITIAL_SERVICES],
@@ -29,58 +42,106 @@ const db = {
   careers: [...INITIAL_CAREERS],
   gallery: [...INITIAL_GALLERY],
   caseStudies: [...INITIAL_CASE_STUDIES],
-  leads: [
-    {
-      id: 'lead-001',
-      fullName: 'Alexander Vance',
-      email: 'alex@vancetech.io',
-      phone: '+1 (555) 392-8819',
-      companyName: 'Vance Tech Labs',
-      serviceCategory: 'AI & ML',
-      budgetRange: '$10,000 - $25,000',
-      timeline: '1 Month',
-      projectDetails: 'Need a custom RAG vector intelligence pipeline connected to our internal customer service documents with automated WhatsApp notifications.',
-      status: 'New' as const,
-      createdAt: '2026-08-14 09:30 AM',
-      source: 'Website Contact Form',
-    },
-    {
-      id: 'lead-002',
-      fullName: 'Sarah Jenkins',
-      email: 'sarah.j@apexretail.co',
-      phone: '+1 (555) 819-2041',
-      companyName: 'Apex Retail Group',
-      serviceCategory: 'Python & Automation',
-      budgetRange: '$5,000 - $10,000',
-      timeline: '2-3 Weeks',
-      projectDetails: 'Automate daily supplier price catalog scraping and sync straight into our Hostinger MySQL database.',
-      status: 'Proposal Sent' as const,
-      createdAt: '2026-08-13 04:15 PM',
-      source: 'AI Cost Estimator',
-    },
-  ],
-  applications: [
-    {
-      id: 'app-001',
-      jobId: 'job-3',
-      jobTitle: 'AI & Full-Stack Summer/Winter Internship (Paid Cohort 2026)',
-      applicantName: 'Rohan Sharma',
-      email: 'rohan.dev@university.edu',
-      phone: '+1 (555) 777-2291',
-      portfolioUrl: 'https://github.com/rohan-ai-dev',
-      linkedinUrl: 'https://linkedin.com/in/rohan-sharma-ai',
-      resumeFileName: 'Rohan_Sharma_Resume_2026.pdf',
-      coverLetter: 'I built two open-source Python automation bots and a React vector search interface. Excited to learn from Orbit-I mentors in the AI cohort!',
-      status: 'Reviewing' as const,
-      appliedAt: '2026-08-14 08:12 AM',
-    },
-  ],
+  leads: [] as any[],
+  applications: [] as any[],
   projects: [...INITIAL_CLIENT_PROJECTS],
   invoices: [...INITIAL_INVOICES],
   metrics: [...INITIAL_PERFORMANCE_METRICS],
   tickets: [...INITIAL_SUPPORT_TICKETS],
   auditLogs: [...INITIAL_AUDIT_LOGS],
 };
+
+let dbReady = false;
+
+// Loads MySQL into the in-memory mirror. Seeds MySQL from the bundled
+// starter data the first time each table/key is found empty, so a brand
+// new database boots with working content instead of a blank site.
+async function initDbAndLoad(): Promise<void> {
+  if (!isDbConfigured()) {
+    console.warn(
+      '[db] DB_HOST/DB_USER/DB_NAME not set — running on in-memory seed data only. ' +
+      'Nothing written will persist across restarts. Set the DB_* env vars to connect MySQL.'
+    );
+    return;
+  }
+
+  try {
+    await initSchema();
+
+    const contentDefaults: Record<string, any> = {
+      settings: INITIAL_SETTINGS,
+      services: INITIAL_SERVICES,
+      products: INITIAL_PRODUCTS,
+      blogs: INITIAL_BLOGS,
+      careers: INITIAL_CAREERS,
+      gallery: INITIAL_GALLERY,
+      caseStudies: INITIAL_CASE_STUDIES,
+    };
+    for (const key of Object.keys(contentDefaults) as Array<keyof typeof contentDefaults>) {
+      let value = await getContent(key as any);
+      if (value === null) {
+        value = contentDefaults[key];
+        await setContent(key as any, value);
+      }
+      (db as any)[key] = value;
+    }
+
+    const rowDefaults: Record<string, any[]> = {
+      leads: [],
+      applications: [],
+      projects: INITIAL_CLIENT_PROJECTS,
+      invoices: INITIAL_INVOICES,
+      tickets: INITIAL_SUPPORT_TICKETS,
+      audit_logs: INITIAL_AUDIT_LOGS,
+    };
+    const rowKeyMap: Record<string, keyof typeof db> = {
+      leads: 'leads',
+      applications: 'applications',
+      projects: 'projects',
+      invoices: 'invoices',
+      tickets: 'tickets',
+      audit_logs: 'auditLogs',
+    };
+    for (const table of Object.keys(rowDefaults) as Array<keyof typeof rowDefaults>) {
+      let rows = await listRows(table as any);
+      if (rows.length === 0 && rowDefaults[table].length > 0) {
+        for (const item of rowDefaults[table]) {
+          await upsertRow(table as any, (item as any).id, item);
+        }
+        rows = rowDefaults[table];
+      }
+      (db as any)[rowKeyMap[table]] = rows;
+    }
+
+    dbReady = true;
+    console.log('[db] Connected to MySQL — data will persist across restarts.');
+  } catch (err) {
+    console.error('[db] MySQL connection/init failed — falling back to in-memory seed data:', err);
+  }
+}
+
+async function logAudit(entry: {
+  actor: string;
+  action: string;
+  category: 'CMS' | 'CRM' | 'BILLING' | 'AUTH' | 'DATABASE' | 'SECURITY' | 'SYSTEM';
+  status: 'SUCCESS' | 'WARNING' | 'ALERT';
+  ipAddress?: string;
+}): Promise<void> {
+  const fullEntry = {
+    id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+    ipAddress: '127.0.0.1',
+    ...entry,
+  };
+  db.auditLogs.unshift(fullEntry as any);
+  if (dbReady) {
+    try {
+      await upsertRow('audit_logs', fullEntry.id, fullEntry);
+    } catch (err) {
+      console.error('[db] Failed to persist audit log:', err);
+    }
+  }
+}
 
 let genAIClient: GoogleGenAI | null = null;
 function getGenAI(): GoogleGenAI | null {
@@ -99,6 +160,11 @@ export async function createApp() {
 
   app.use(express.json());
 
+  // Connect to MySQL and load persisted data into the in-memory mirror.
+  // Falls back to bundled seed data (with a console warning) if DB env vars
+  // are missing or the connection fails, so the app never hard-crashes.
+  await initDbAndLoad();
+
   // ==========================================
   // API ROUTES
   // ==========================================
@@ -110,8 +176,7 @@ export async function createApp() {
       company: db.settings.companyName,
       timestamp: new Date().toISOString(),
       hosting: {
-        hostingerMySQL: 'Supported & Configured',
-        supabasePostgreSQL: 'Supported & Configured',
+        mysql: dbReady ? 'Connected' : (isDbConfigured() ? 'Configured but unreachable — check DB_* env vars' : 'Not configured — set DB_HOST/DB_USER/DB_NAME'),
         vercelCloud: 'Ready',
       },
     });
@@ -131,63 +196,54 @@ export async function createApp() {
   });
 
   // SuperAdmin Update Content
-  app.put('/api/content/:resource', (req, res) => {
+  app.put('/api/content/:resource', async (req, res) => {
     const { resource } = req.params;
     const body = req.body;
 
-    if (resource === 'settings') {
-      db.settings = { ...db.settings, ...body };
-      return res.json({ success: true, data: db.settings });
-    }
-    if (resource === 'services') {
-      db.services = body;
-      return res.json({ success: true, data: db.services });
-    }
-    if (resource === 'products') {
-      db.products = body;
-      return res.json({ success: true, data: db.products });
-    }
-    if (resource === 'blogs') {
-      db.blogs = body;
-      return res.json({ success: true, data: db.blogs });
-    }
-    if (resource === 'careers') {
-      db.careers = body;
-      return res.json({ success: true, data: db.careers });
-    }
-    if (resource === 'gallery') {
-      db.gallery = body;
-      return res.json({ success: true, data: db.gallery });
+    const validResources = ['settings', 'services', 'products', 'blogs', 'careers', 'gallery'];
+    if (!validResources.includes(resource)) {
+      return res.status(400).json({ error: `Unknown resource: ${resource}` });
     }
 
-    res.status(400).json({ error: `Unknown resource: ${resource}` });
+    if (resource === 'settings') {
+      db.settings = { ...db.settings, ...body };
+    } else {
+      (db as any)[resource] = body;
+    }
+
+    try {
+      if (dbReady) {
+        await setContent(resource as any, (db as any)[resource]);
+      }
+      res.json({ success: true, data: (db as any)[resource] });
+    } catch (err) {
+      console.error(`[db] Failed to persist content/${resource}:`, err);
+      res.status(500).json({ error: 'Saved in memory but failed to persist to database.' });
+    }
   });
 
   // Auth & Password Recovery Endpoints
   const resetTokens: Record<string, { code: string; expires: number; role: string }> = {};
 
-  app.post('/api/auth/login', (req, res) => {
+  app.post('/api/auth/login', async (req, res) => {
     const { email, password, role } = req.body;
     // SuperAdmin default credentials or Client login
     if (role === 'admin' || email === 'admin@orbit-i.com') {
       if (password === 'orbit2026' || password === 'admin123' || password === 'admin') {
-        db.auditLogs.unshift({
-          id: `log-${Date.now()}`,
-          timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        await logAudit({
           actor: 'SuperAdmin',
           action: 'SuperAdmin successfully authenticated via portal credentials',
           category: 'AUTH',
           status: 'SUCCESS',
-          ipAddress: '127.0.0.1',
         });
         return res.json({
           success: true,
           token: `jwt_admin_${Date.now()}`,
           user: {
-            name: 'Isamad Rind',
+            name: 'Abdul Samad Rind',
             email: email || 'admin@orbit-i.com',
             role: 'superadmin',
-            title: 'Enterprise Root Administrator',
+            title: 'Founder & CEO',
           },
         });
       }
@@ -199,14 +255,11 @@ export async function createApp() {
       (p) => p.clientEmail.toLowerCase() === email?.toLowerCase()
     );
     if (matchingProject || email === 'client@enterprise.com' || email === 'alex@vancetech.io') {
-      db.auditLogs.unshift({
-        id: `log-${Date.now()}`,
-        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      await logAudit({
         actor: email,
         action: 'Client successfully logged into client project portal',
         category: 'AUTH',
         status: 'SUCCESS',
-        ipAddress: '127.0.0.1',
       });
       return res.json({
         success: true,
@@ -235,7 +288,7 @@ export async function createApp() {
     });
   });
 
-  app.post('/api/auth/forgot-password', (req, res) => {
+  app.post('/api/auth/forgot-password', async (req, res) => {
     const { email, role } = req.body;
     if (!email) {
       return res.status(400).json({ error: 'Email address is required.' });
@@ -245,14 +298,11 @@ export async function createApp() {
     const expires = Date.now() + 15 * 60 * 1000; // 15 mins
     resetTokens[email.toLowerCase()] = { code, expires, role: role || 'admin' };
 
-    db.auditLogs.unshift({
-      id: `log-${Date.now()}`,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+    await logAudit({
       actor: email,
       action: `Password reset verification OTP issued: ${code}`,
       category: 'AUTH',
       status: 'WARNING',
-      ipAddress: '127.0.0.1',
     });
 
     res.json({
@@ -276,7 +326,7 @@ export async function createApp() {
     res.json({ success: true, message: 'Code verified successfully.' });
   });
 
-  app.post('/api/auth/reset-password', (req, res) => {
+  app.post('/api/auth/reset-password', async (req, res) => {
     const { email, code, newPassword } = req.body;
     const record = resetTokens[email?.toLowerCase()];
 
@@ -286,14 +336,11 @@ export async function createApp() {
 
     delete resetTokens[email?.toLowerCase()];
 
-    db.auditLogs.unshift({
-      id: `log-${Date.now()}`,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+    await logAudit({
       actor: email,
       action: 'Password credentials securely updated via OTP reset process',
       category: 'AUTH',
       status: 'SUCCESS',
-      ipAddress: '127.0.0.1',
     });
 
     res.json({
@@ -326,37 +373,47 @@ export async function createApp() {
     });
   });
 
-  app.post('/api/data/import-all', (req, res) => {
+  app.post('/api/data/import-all', async (req, res) => {
     const { data } = req.body;
     if (!data) return res.status(400).json({ error: 'Missing data payload' });
 
-    if (data.settings) db.settings = data.settings;
-    if (data.services) db.services = data.services;
-    if (data.products) db.products = data.products;
-    if (data.blogs) db.blogs = data.blogs;
-    if (data.careers) db.careers = data.careers;
-    if (data.gallery) db.gallery = data.gallery;
-    if (data.caseStudies) db.caseStudies = data.caseStudies;
-    if (data.leads) db.leads = data.leads;
-    if (data.applications) db.applications = data.applications;
-    if (data.projects) db.projects = data.projects;
-    if (data.invoices) db.invoices = data.invoices;
-    if (data.tickets) db.tickets = data.tickets;
+    try {
+      const contentUpdates: Array<[string, any]> = [];
+      if (data.settings) { db.settings = data.settings; contentUpdates.push(['settings', db.settings]); }
+      if (data.services) { db.services = data.services; contentUpdates.push(['services', db.services]); }
+      if (data.products) { db.products = data.products; contentUpdates.push(['products', db.products]); }
+      if (data.blogs) { db.blogs = data.blogs; contentUpdates.push(['blogs', db.blogs]); }
+      if (data.careers) { db.careers = data.careers; contentUpdates.push(['careers', db.careers]); }
+      if (data.gallery) { db.gallery = data.gallery; contentUpdates.push(['gallery', db.gallery]); }
+      if (data.caseStudies) { db.caseStudies = data.caseStudies; contentUpdates.push(['caseStudies', db.caseStudies]); }
 
-    db.auditLogs.unshift({
-      id: `log-${Date.now()}`,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      actor: 'SuperAdmin',
-      action: 'Full database state imported and applied from JSON backup',
-      category: 'DATABASE',
-      status: 'WARNING',
-      ipAddress: '127.0.0.1',
-    });
+      const rowUpdates: Array<[string, any[]]> = [];
+      if (data.leads) { db.leads = data.leads; rowUpdates.push(['leads', db.leads]); }
+      if (data.applications) { db.applications = data.applications; rowUpdates.push(['applications', db.applications]); }
+      if (data.projects) { db.projects = data.projects; rowUpdates.push(['projects', db.projects]); }
+      if (data.invoices) { db.invoices = data.invoices; rowUpdates.push(['invoices', db.invoices]); }
+      if (data.tickets) { db.tickets = data.tickets; rowUpdates.push(['tickets', db.tickets]); }
 
-    res.json({ success: true, message: 'Database state successfully restored from JSON backup.' });
+      if (dbReady) {
+        for (const [key, value] of contentUpdates) await setContent(key as any, value);
+        for (const [table, items] of rowUpdates) await replaceAllRows(table as any, items);
+      }
+
+      await logAudit({
+        actor: 'SuperAdmin',
+        action: 'Full database state imported and applied from JSON backup',
+        category: 'DATABASE',
+        status: 'WARNING',
+      });
+
+      res.json({ success: true, message: 'Database state successfully restored from JSON backup.' });
+    } catch (err) {
+      console.error('[db] import-all failed:', err);
+      res.status(500).json({ error: 'Import applied in memory but failed to persist to database.' });
+    }
   });
 
-  app.post('/api/data/reset-seeds', (req, res) => {
+  app.post('/api/data/reset-seeds', async (req, res) => {
     db.settings = { ...INITIAL_SETTINGS };
     db.services = [...INITIAL_SERVICES];
     db.products = [...INITIAL_PRODUCTS];
@@ -368,16 +425,35 @@ export async function createApp() {
     db.invoices = [...INITIAL_INVOICES];
     db.tickets = [...INITIAL_SUPPORT_TICKETS];
     db.metrics = [...INITIAL_PERFORMANCE_METRICS];
+    db.leads = [];
+    db.applications = [];
     db.auditLogs = [...INITIAL_AUDIT_LOGS];
 
-    db.auditLogs.unshift({
-      id: `log-${Date.now()}`,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+    try {
+      if (dbReady) {
+        await setContent('settings', db.settings);
+        await setContent('services', db.services);
+        await setContent('products', db.products);
+        await setContent('blogs', db.blogs);
+        await setContent('careers', db.careers);
+        await setContent('gallery', db.gallery);
+        await setContent('caseStudies', db.caseStudies);
+        await replaceAllRows('projects', db.projects);
+        await replaceAllRows('invoices', db.invoices);
+        await replaceAllRows('tickets', db.tickets);
+        await replaceAllRows('leads', db.leads);
+        await replaceAllRows('applications', db.applications);
+        await replaceAllRows('audit_logs', db.auditLogs);
+      }
+    } catch (err) {
+      console.error('[db] reset-seeds failed to persist:', err);
+    }
+
+    await logAudit({
       actor: 'SuperAdmin',
       action: 'Database factory reset initiated — restored all initial seed data',
       category: 'DATABASE',
       status: 'ALERT',
-      ipAddress: '127.0.0.1',
     });
 
     res.json({
@@ -403,7 +479,7 @@ export async function createApp() {
     res.json(db.leads);
   });
 
-  app.post('/api/leads', (req, res) => {
+  app.post('/api/leads', async (req, res) => {
     const newLead = {
       id: `lead-${Date.now()}`,
       createdAt: new Date().toLocaleString(),
@@ -411,14 +487,23 @@ export async function createApp() {
       ...req.body,
     };
     db.leads.unshift(newLead);
-    res.status(201).json({ success: true, lead: newLead });
+    try {
+      if (dbReady) await upsertRow('leads', newLead.id, newLead);
+      res.status(201).json({ success: true, lead: newLead });
+    } catch (err) {
+      console.error('[db] Failed to persist lead:', err);
+      res.status(201).json({ success: true, lead: newLead, warning: 'Saved in memory but failed to persist to database.' });
+    }
   });
 
-  app.patch('/api/leads/:id', (req, res) => {
+  app.patch('/api/leads/:id', async (req, res) => {
     const { id } = req.params;
     const idx = db.leads.findIndex((l) => l.id === id);
     if (idx >= 0) {
       db.leads[idx] = { ...db.leads[idx], ...req.body };
+      if (dbReady) {
+        try { await upsertRow('leads', id, db.leads[idx]); } catch (err) { console.error('[db] Failed to persist lead update:', err); }
+      }
       return res.json({ success: true, lead: db.leads[idx] });
     }
     res.status(404).json({ error: 'Lead not found' });
@@ -429,7 +514,7 @@ export async function createApp() {
     res.json(db.applications);
   });
 
-  app.post('/api/careers/apply', (req, res) => {
+  app.post('/api/careers/apply', async (req, res) => {
     const newApp = {
       id: `app-${Date.now()}`,
       appliedAt: new Date().toLocaleString(),
@@ -437,14 +522,23 @@ export async function createApp() {
       ...req.body,
     };
     db.applications.unshift(newApp);
-    res.status(201).json({ success: true, application: newApp });
+    try {
+      if (dbReady) await upsertRow('applications', newApp.id, newApp);
+      res.status(201).json({ success: true, application: newApp });
+    } catch (err) {
+      console.error('[db] Failed to persist application:', err);
+      res.status(201).json({ success: true, application: newApp, warning: 'Saved in memory but failed to persist to database.' });
+    }
   });
 
-  app.patch('/api/careers/applications/:id', (req, res) => {
+  app.patch('/api/careers/applications/:id', async (req, res) => {
     const { id } = req.params;
     const idx = db.applications.findIndex((a) => a.id === id);
     if (idx >= 0) {
       db.applications[idx] = { ...db.applications[idx], ...req.body };
+      if (dbReady) {
+        try { await upsertRow('applications', id, db.applications[idx]); } catch (err) { console.error('[db] Failed to persist application update:', err); }
+      }
       return res.json({ success: true, application: db.applications[idx] });
     }
     res.status(404).json({ error: 'Application not found' });
@@ -455,7 +549,7 @@ export async function createApp() {
     res.json(db.projects);
   });
 
-  app.post('/api/projects', (req, res) => {
+  app.post('/api/projects', async (req, res) => {
     const newProject = {
       id: `proj-${Date.now()}`,
       currentPhase: 'Discovery',
@@ -471,31 +565,37 @@ export async function createApp() {
       ...req.body,
     };
     db.projects.unshift(newProject);
-    db.auditLogs.unshift({
-      id: `log-${Date.now()}`,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+    if (dbReady) {
+      try { await upsertRow('projects', newProject.id, newProject); } catch (err) { console.error('[db] Failed to persist project:', err); }
+    }
+    await logAudit({
       actor: 'SuperAdmin',
       action: `Created new client project: "${newProject.projectName || newProject.title}"`,
       category: 'CRM',
       status: 'SUCCESS',
-      ipAddress: '127.0.0.1',
     });
     res.status(201).json({ success: true, project: newProject });
   });
 
-  app.patch('/api/projects/:id', (req, res) => {
+  app.patch('/api/projects/:id', async (req, res) => {
     const { id } = req.params;
     const idx = db.projects.findIndex((p) => p.id === id);
     if (idx >= 0) {
       db.projects[idx] = { ...db.projects[idx], ...req.body };
+      if (dbReady) {
+        try { await upsertRow('projects', id, db.projects[idx]); } catch (err) { console.error('[db] Failed to persist project update:', err); }
+      }
       return res.json({ success: true, project: db.projects[idx] });
     }
     res.status(404).json({ error: 'Project not found' });
   });
 
-  app.delete('/api/projects/:id', (req, res) => {
+  app.delete('/api/projects/:id', async (req, res) => {
     const { id } = req.params;
     db.projects = db.projects.filter((p) => p.id !== id);
+    if (dbReady) {
+      try { await deleteRow('projects', id); } catch (err) { console.error('[db] Failed to delete project:', err); }
+    }
     res.json({ success: true });
   });
 
@@ -504,7 +604,7 @@ export async function createApp() {
     res.json(db.invoices);
   });
 
-  app.post('/api/invoices', (req, res) => {
+  app.post('/api/invoices', async (req, res) => {
     const amount = Number(req.body.amount || 0);
     const tax = Number(req.body.tax || Math.round(amount * 0.05));
     const newInvoice = {
@@ -518,43 +618,50 @@ export async function createApp() {
       tax,
     };
     db.invoices.unshift(newInvoice);
-    db.auditLogs.unshift({
-      id: `log-${Date.now()}`,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+    if (dbReady) {
+      try { await upsertRow('invoices', newInvoice.id, newInvoice); } catch (err) { console.error('[db] Failed to persist invoice:', err); }
+    }
+    await logAudit({
       actor: 'SuperAdmin',
       action: `Generated invoice #${newInvoice.invoiceNumber} for ${newInvoice.clientName} (${newInvoice.totalAmount})`,
       category: 'BILLING',
       status: 'SUCCESS',
-      ipAddress: '127.0.0.1',
     });
     res.status(201).json({ success: true, invoice: newInvoice });
   });
 
-  app.patch('/api/invoices/:id', (req, res) => {
+  app.patch('/api/invoices/:id', async (req, res) => {
     const { id } = req.params;
     const idx = db.invoices.findIndex((i) => i.id === id);
     if (idx >= 0) {
       db.invoices[idx] = { ...db.invoices[idx], ...req.body };
+      if (dbReady) {
+        try { await upsertRow('invoices', id, db.invoices[idx]); } catch (err) { console.error('[db] Failed to persist invoice update:', err); }
+      }
       return res.json({ success: true, invoice: db.invoices[idx] });
     }
     res.status(404).json({ error: 'Invoice not found' });
   });
 
-  app.delete('/api/invoices/:id', (req, res) => {
+  app.delete('/api/invoices/:id', async (req, res) => {
     const { id } = req.params;
     db.invoices = db.invoices.filter((i) => i.id !== id);
+    if (dbReady) {
+      try { await deleteRow('invoices', id); } catch (err) { console.error('[db] Failed to delete invoice:', err); }
+    }
     res.json({ success: true });
   });
 
-  app.post('/api/payments/settle', (req, res) => {
+  app.post('/api/payments/settle', async (req, res) => {
     const { invoiceId, paymentMethod, paymentToken } = req.body;
     const inv = db.invoices.find((i) => i.id === invoiceId);
     if (inv) {
       inv.status = 'Paid';
       inv.paidAt = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      db.auditLogs.unshift({
-        id: `log-${Date.now()}`,
-        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      if (dbReady) {
+        try { await upsertRow('invoices', inv.id, inv); } catch (err) { console.error('[db] Failed to persist settled invoice:', err); }
+      }
+      await logAudit({
         actor: `Client (${inv.clientEmail})`,
         action: `Settled Invoice #${inv.invoiceNumber} (${inv.totalAmount}) via ${paymentMethod || 'Credit Card Gateway'}`,
         category: 'BILLING',
@@ -576,7 +683,7 @@ export async function createApp() {
     res.json(db.tickets);
   });
 
-  app.post('/api/support/tickets', (req, res) => {
+  app.post('/api/support/tickets', async (req, res) => {
     const newTicket = {
       id: `tkt-${Date.now()}`,
       status: 'Open',
@@ -593,10 +700,13 @@ export async function createApp() {
       ...req.body,
     };
     db.tickets.unshift(newTicket);
+    if (dbReady) {
+      try { await upsertRow('tickets', newTicket.id, newTicket); } catch (err) { console.error('[db] Failed to persist ticket:', err); }
+    }
     res.status(201).json({ success: true, ticket: newTicket });
   });
 
-  app.post('/api/support/tickets/:id/messages', (req, res) => {
+  app.post('/api/support/tickets/:id/messages', async (req, res) => {
     const { id } = req.params;
     const { sender, senderName, text } = req.body;
     const ticket = db.tickets.find((t) => t.id === id);
@@ -612,16 +722,22 @@ export async function createApp() {
       if (sender === 'support' || sender === 'architect') {
         ticket.status = 'In Investigation';
       }
+      if (dbReady) {
+        try { await upsertRow('tickets', ticket.id, ticket); } catch (err) { console.error('[db] Failed to persist ticket message:', err); }
+      }
       return res.json({ success: true, message: newMsg, ticket });
     }
     res.status(404).json({ error: 'Ticket not found' });
   });
 
-  app.patch('/api/support/tickets/:id', (req, res) => {
+  app.patch('/api/support/tickets/:id', async (req, res) => {
     const { id } = req.params;
     const idx = db.tickets.findIndex((t) => t.id === id);
     if (idx >= 0) {
       db.tickets[idx] = { ...db.tickets[idx], ...req.body };
+      if (dbReady) {
+        try { await upsertRow('tickets', id, db.tickets[idx]); } catch (err) { console.error('[db] Failed to persist ticket update:', err); }
+      }
       return res.json({ success: true, ticket: db.tickets[idx] });
     }
     res.status(404).json({ error: 'Ticket not found' });
@@ -632,33 +748,46 @@ export async function createApp() {
     res.json(db.auditLogs);
   });
 
-  app.post('/api/audit-logs', (req, res) => {
-    const newLog = {
-      id: `log-${Date.now()}`,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      status: 'SUCCESS',
-      ipAddress: '127.0.0.1',
-      ...req.body,
-    };
-    db.auditLogs.unshift(newLog);
-    res.status(201).json(newLog);
+  app.post('/api/audit-logs', async (req, res) => {
+    await logAudit({
+      actor: req.body.actor || 'System',
+      action: req.body.action || 'Unspecified action',
+      category: req.body.category || 'SYSTEM',
+      status: req.body.status || 'SUCCESS',
+      ipAddress: req.body.ipAddress,
+    });
+    res.status(201).json(db.auditLogs[0]);
   });
 
   // 8. Database Health & Connection Tester
-  app.post('/api/db/test-connection', (req, res) => {
-    const { dialect, host, user, database } = req.body;
-    // Simulated live connection probe
-    setTimeout(() => {
+  app.post('/api/db/test-connection', async (req, res) => {
+    const started = Date.now();
+    if (!isDbConfigured()) {
+      return res.status(400).json({
+        success: false,
+        error: 'DB_HOST / DB_USER / DB_NAME are not set in environment variables.',
+      });
+    }
+    try {
+      await initSchema(); // cheap no-op if tables already exist; also verifies the connection actually works
+      const tableCounts = await Promise.all(
+        (['leads', 'applications', 'projects', 'invoices', 'tickets', 'audit_logs'] as const).map((t) => listRows(t as any))
+      );
       res.json({
         success: true,
-        dialect: dialect || 'mysql',
-        pingMs: Math.floor(Math.random() * 15 + 24),
-        connectedTables: 8,
+        dialect: 'mysql',
+        pingMs: Date.now() - started,
+        connectedTables: 7 + tableCounts.length, // content_store + 6 row tables
         status: 'CONNECTED_HEALTHY',
-        serverVersion: dialect === 'supabase' ? 'PostgreSQL 16.3 on AWS us-east-1' : 'MySQL 8.0.36 Community Server',
         timestamp: new Date().toISOString(),
       });
-    }, 400);
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: err?.message || 'MySQL connection failed.',
+        pingMs: Date.now() - started,
+      });
+    }
   });
 
   // 9. Performance Metrics & Reporting Analytics
@@ -682,17 +811,18 @@ export async function createApp() {
   function buildOrbitKnowledgeBase(): string {
     const servicesList = db.services.map(s => `- ${s.title} (${s.category}): ${s.shortDesc} [Starting from $${s.startingPrice}, Delivery: ${s.deliveryTime}]`).join('\n');
     const productsList = db.products.map(p => `- ${p.name} v${p.version} (${p.category}): ${p.tagline} [$${p.monthlyPrice}/mo or $${p.annualPrice}/yr]`).join('\n');
-    const careersList = db.careers.map(c => `- ${c.title} (${c.department} | ${c.type} | ${c.location}): ${c.experienceLevel} level, Salary: ${c.salaryRange}`).join('\n');
+    const careersList = db.careers.map(c => `- ${c.title} (${c.department} | ${c.type} | ${c.location}): ${c.experience} experience, ${c.stipendOrSalary}`).join('\n');
     
     return `COMPANY PROFILE & KNOWLEDGE BASE:
-- Company Name: Orbit-I Private Limited (${db.settings.legalEntity})
+- Company Name: ${db.settings.companyName} (${db.settings.legalEntity})
 - Founded: ${db.settings.foundedYear}
-- Founder & Principal Solutions Architect: Isamad Rind
+- Founder & CEO: Abdul Samad Rind
+- Co-Founder & CTO: Muneeb Ur Rehman
+- Co-Founder & COO: Maria Almani
 - Headquarters: ${db.settings.address}
 - Contact Email: ${db.settings.contactEmail} (Support: ${db.settings.supportEmail})
 - Phone: ${db.settings.phone}
 - Core Mission: High-precision enterprise AI integration, resilient Python automation pipelines, modern high-throughput web/mobile platforms, custom SaaS products, and digital growth systems.
-- 99.99% Enterprise Uptime SLA Guarantee
 
 ACTIVE SERVICES & PRICING:
 ${servicesList}
@@ -702,16 +832,14 @@ ${productsList}
 
 CAREERS & INTERNSHIP PROGRAMS:
 ${careersList}
-- AI & Full-Stack Summer/Winter Internship Cohort 2026: 12-week paid cohort ($1,200 - $1,800/mo stipend) offering hands-on engineering in production AI pipelines, Playwright scraping, and React 19 microservices with direct placement track.
 
 ENTERPRISE PORTALS & DEMO CREDENTIALS:
 - SuperAdmin Control Center: Root access for full CRUD CMS, AI lead proposals, applicant review, invoicing, audit logs, and SQL backups. Demo Login: admin@orbit-i.com (Password: orbit2026)
-- Client Project Portal: Real-time milestone tracker, Jira-style task boards, invoice settlements, and support ticketing. Demo Login: alex@vancetech.io or client@enterprise.com
+- Client Project Portal: Real-time milestone tracker, Jira-style task boards, invoice settlements, and support ticketing. Demo Login: client@enterprise.com
 
 HOSTING & DATABASE STACK:
-- Hostinger cPanel / VPS MySQL databases fully supported with automated schema export scripts.
-- Supabase PostgreSQL (pgvector support for AI embeddings).
-- Vercel edge deployment with containerized Docker CI/CD pipelines.
+- MySQL database (Hostinger or any standard MySQL host) with automated schema creation on first boot.
+- Vercel edge deployment for the frontend and serverless API.
 
 PROJECT ESTIMATOR & ONBOARDING:
 - Instant AI Cost Estimator modal available on the site for instant scoping, timeline generation, and budget breakdown.
@@ -746,7 +874,7 @@ We provide tailored, milestone-based pricing with zero hidden fees:
       return `### 🐍 Python Scripting & Robotic Automation
 Orbit-I builds industrial-grade Python automation systems:
 - **Headless Scraping**: Automated Playwright / Selenium worker grids with residential proxy rotation and anti-bot bypass.
-- **Database ETL**: Automated extraction and direct ingestion into **Hostinger MySQL** or **Supabase PostgreSQL**.
+- **Database ETL**: Automated extraction and direct ingestion into **MySQL**.
 - **Workflow Automation**: Automated invoice processing, CRM synchronization, and event-driven WhatsApp/Slack alerts.
 - **Reliability**: Self-healing worker scripts with 99.9% fault tolerance and execution logging.`;
     }
@@ -1055,136 +1183,74 @@ GUIDELINES FOR YOUR RESPONSES:
   app.get('/api/export-db/:dialect', (req, res) => {
     const { dialect } = req.params;
 
-    if (dialect === 'mysql') {
-      const sql = `-- ==============================================================================
--- ORBIT-I PRIVATE LIMITED - DATABASE SCHEMA & SEED DATA (MySQL / Hostinger)
--- Compatible with Hostinger cPanel MySQL, phpMyAdmin, AWS RDS, and Google Cloud SQL
--- ==============================================================================
-
-CREATE DATABASE IF NOT EXISTS \`orbit_i_db\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE \`orbit_i_db\`;
-
--- 1. Services Table
-CREATE TABLE IF NOT EXISTS \`services\` (
-  \`id\` VARCHAR(64) PRIMARY KEY,
-  \`title\` VARCHAR(255) NOT NULL,
-  \`category\` VARCHAR(100) NOT NULL,
-  \`short_desc\` TEXT NOT NULL,
-  \`full_desc\` LONGTEXT NOT NULL,
-  \`icon\` VARCHAR(64) NOT NULL,
-  \`starting_price\` DECIMAL(10, 2) NOT NULL,
-  \`delivery_time\` VARCHAR(64) NOT NULL,
-  \`is_popular\` BOOLEAN DEFAULT FALSE,
-  \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB;
-
--- 2. Products Table
-CREATE TABLE IF NOT EXISTS \`products\` (
-  \`id\` VARCHAR(64) PRIMARY KEY,
-  \`name\` VARCHAR(255) NOT NULL,
-  \`tagline\` VARCHAR(255) NOT NULL,
-  \`category\` VARCHAR(100) NOT NULL,
-  \`description\` LONGTEXT NOT NULL,
-  \`version\` VARCHAR(32) NOT NULL,
-  \`monthly_price\` DECIMAL(10, 2) NOT NULL,
-  \`annual_price\` DECIMAL(10, 2) NOT NULL,
-  \`status\` VARCHAR(32) DEFAULT 'Live',
-  \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB;
-
--- 3. Leads & Inquiries Table
-CREATE TABLE IF NOT EXISTS \`inquiries\` (
-  \`id\` VARCHAR(64) PRIMARY KEY,
-  \`full_name\` VARCHAR(255) NOT NULL,
-  \`email\` VARCHAR(255) NOT NULL,
-  \`phone\` VARCHAR(64),
-  \`company_name\` VARCHAR(255),
-  \`service_category\` VARCHAR(100) NOT NULL,
-  \`budget_range\` VARCHAR(64),
-  \`timeline\` VARCHAR(64),
-  \`project_details\` LONGTEXT NOT NULL,
-  \`status\` ENUM('New', 'Contacted', 'Proposal Sent', 'Closed Won', 'Archived') DEFAULT 'New',
-  \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB;
-
--- 4. Career Applications Table
-CREATE TABLE IF NOT EXISTS \`career_applications\` (
-  \`id\` VARCHAR(64) PRIMARY KEY,
-  \`job_id\` VARCHAR(64) NOT NULL,
-  \`job_title\` VARCHAR(255) NOT NULL,
-  \`applicant_name\` VARCHAR(255) NOT NULL,
-  \`email\` VARCHAR(255) NOT NULL,
-  \`phone\` VARCHAR(64),
-  \`portfolio_url\` VARCHAR(512),
-  \`linkedin_url\` VARCHAR(512),
-  \`resume_file\` VARCHAR(255) NOT NULL,
-  \`cover_letter\` LONGTEXT,
-  \`status\` VARCHAR(64) DEFAULT 'Pending',
-  \`applied_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB;
-
--- Sample Seed Insert
-INSERT INTO \`services\` (\`id\`, \`title\`, \`category\`, \`short_desc\`, \`full_desc\`, \`icon\`, \`starting_price\`, \`delivery_time\`, \`is_popular\`)
-VALUES ('srv-1', 'Enterprise AI & Machine Learning', 'AI & ML', 'Custom LLM fine-tuning, RAG agents & vision AI', 'Proprietary AI pipelines and multi-agent systems.', 'Cpu', 3499.00, '3-6 Weeks', 1)
-ON DUPLICATE KEY UPDATE \`title\` = VALUES(\`title\`);
-`;
-      res.setHeader('Content-Type', 'text/plain');
-      return res.send(sql);
+    if (dialect !== 'mysql') {
+      return res.status(400).json({
+        error: `Dialect "${dialect}" is not supported. This app runs on MySQL. Supabase/Postgres integration is not wired in — set the DB_* environment variables to a MySQL instance instead.`,
+      });
     }
 
-    if (dialect === 'supabase') {
-      const sql = `-- ==============================================================================
--- ORBIT-I PRIVATE LIMITED - SUPABASE / POSTGRESQL SCHEMA WITH ROW LEVEL SECURITY
--- Compatible with Supabase, Vercel Postgres, Neon, and AWS Aurora
+    const sql = `-- ==============================================================================
+-- ORBIT-I — ACTUAL DATABASE SCHEMA (MySQL)
+-- This matches what db.ts creates automatically on first boot (initSchema()).
+-- Content resources (settings/services/products/blogs/careers/gallery/case
+-- studies) are stored as one JSON row per resource in content_store, since
+-- the app's admin panel always replaces them wholesale, not field-by-field.
+-- Operational CRM entities (leads, applications, projects, invoices,
+-- tickets, audit_logs) get one row per record with a real primary key,
+-- with the record body stored as JSON to match the app's TypeScript types
+-- exactly, including their nested/optional fields.
 -- ==============================================================================
 
--- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE TABLE IF NOT EXISTS content_store (
+  resource_key VARCHAR(50) PRIMARY KEY,
+  data JSON NOT NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 1. Services Table
-CREATE TABLE IF NOT EXISTS public.services (
-  id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
-  category TEXT NOT NULL,
-  short_desc TEXT NOT NULL,
-  full_desc TEXT NOT NULL,
-  icon TEXT NOT NULL,
-  starting_price NUMERIC(10, 2) NOT NULL,
-  delivery_time TEXT NOT NULL,
-  is_popular BOOLEAN DEFAULT false,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
+CREATE TABLE IF NOT EXISTS leads (
+  id VARCHAR(64) PRIMARY KEY,
+  data JSON NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 2. Inquiries Table
-CREATE TABLE IF NOT EXISTS public.inquiries (
-  id TEXT PRIMARY KEY DEFAULT uuid_generate_v4()::text,
-  full_name TEXT NOT NULL,
-  email TEXT NOT NULL,
-  phone TEXT,
-  company_name TEXT,
-  service_category TEXT NOT NULL,
-  budget_range TEXT,
-  timeline TEXT,
-  project_details TEXT NOT NULL,
-  status TEXT DEFAULT 'New',
-  created_at TIMESTAMPTZ DEFAULT now()
-);
+CREATE TABLE IF NOT EXISTS applications (
+  id VARCHAR(64) PRIMARY KEY,
+  data JSON NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 3. Row Level Security Policies
-ALTER TABLE public.services ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.inquiries ENABLE ROW LEVEL SECURITY;
+CREATE TABLE IF NOT EXISTS projects (
+  id VARCHAR(64) PRIMARY KEY,
+  data JSON NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE POLICY "Public services are viewable by everyone" 
-ON public.services FOR SELECT USING (true);
+CREATE TABLE IF NOT EXISTS invoices (
+  id VARCHAR(64) PRIMARY KEY,
+  data JSON NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE POLICY "Anyone can submit an inquiry" 
-ON public.inquiries FOR INSERT WITH CHECK (true);
+CREATE TABLE IF NOT EXISTS tickets (
+  id VARCHAR(64) PRIMARY KEY,
+  data JSON NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id VARCHAR(64) PRIMARY KEY,
+  data JSON NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `;
-      res.setHeader('Content-Type', 'text/plain');
-      return res.send(sql);
-    }
-
-    res.status(400).json({ error: 'Dialect must be mysql or supabase' });
+    res.setHeader('Content-Type', 'text/plain');
+    return res.send(sql);
   });
 
   return app;

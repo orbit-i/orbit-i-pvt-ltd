@@ -162,6 +162,16 @@ export const AboutPage: React.FC<AboutPageProps> = ({
             </div>
           ))}
         </div>
+
+        <div className="text-center">
+          <button
+            onClick={() => setActiveTab('team')}
+            className="text-xs font-semibold text-cyan-400 hover:text-cyan-300 inline-flex items-center gap-1 cursor-pointer transition-colors"
+          >
+            Meet the Full Team
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* Company Milestones Timeline */}

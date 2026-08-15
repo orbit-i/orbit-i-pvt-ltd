@@ -68,8 +68,7 @@ export const Footer: React.FC<FooterProps> = ({
       whatsapp: 'https://whatsapp.com/channel/0029Vb8I4kvJJhzUXqEnB50J',
     },
     hostingConfigs: {
-      supabaseConnected: true,
-      mysqlHostingerConfigured: true,
+      mysqlConfigured: true,
       vercelReady: true,
     },
   };
@@ -82,6 +81,7 @@ export const Footer: React.FC<FooterProps> = ({
     { tab: 'products', label: 'SaaS Products' },
     { tab: 'featured', label: 'Case Studies' },
     { tab: 'about', label: 'About Orbit-I' },
+    { tab: 'team', label: 'Our Team' },
     { tab: 'careers', label: 'Careers & Hiring' },
     { tab: 'blogs', label: 'Technical Insights' },
     { tab: 'gallery', label: 'Media & Life' },
@@ -182,7 +182,7 @@ export const Footer: React.FC<FooterProps> = ({
             </div>
 
             {/* Social Icons */}
-            <div className="flex items-center justify-center sm:justify-start gap-2 pt-2">
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-2">
               {currentSettings.socials?.github && (
                 <a
                   href={currentSettings.socials.github}
@@ -364,7 +364,7 @@ export const Footer: React.FC<FooterProps> = ({
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 text-center sm:text-left">
                 Enterprise Portals
               </div>
-              <div className="flex items-center justify-center sm:justify-start gap-2">
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
                 <button
                   onClick={() => handleNav('admin')}
                   className="text-xs px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 font-semibold cursor-pointer transition-colors"
@@ -382,7 +382,7 @@ export const Footer: React.FC<FooterProps> = ({
           </div>
         </div>
 
-        {/* Bottom Bar: Copyright & Legal - Left Aligned */}
+        {/* Bottom Bar: Copyright & Legal - Centered on mobile, left on desktop */}
         <div className="mt-12 pt-8 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400 text-center sm:text-left">
           <div className="text-center sm:text-left">
             © {new Date().getFullYear()} {currentSettings.legalEntity}. All rights reserved.

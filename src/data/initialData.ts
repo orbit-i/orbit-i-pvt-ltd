@@ -40,8 +40,7 @@ export const INITIAL_SETTINGS: SiteSettings = {
     whatsapp: 'https://whatsapp.com/channel/0029Vb8I4kvJJhzUXqEnB50J',
   },
   hostingConfigs: {
-    supabaseConnected: false,
-    mysqlHostingerConfigured: false,
+    mysqlConfigured: true,
     vercelReady: true,
   },
 };

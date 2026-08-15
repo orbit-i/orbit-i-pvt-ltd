@@ -1,6 +1,7 @@
 export type NavigationTab = 
   | 'home'
   | 'about'
+  | 'team'
   | 'services'
   | 'products'
   | 'blogs'
@@ -287,8 +288,7 @@ export interface SiteSettings {
     whatsapp: string;
   };
   hostingConfigs: {
-    supabaseConnected: boolean;
-    mysqlHostingerConfigured: boolean;
+    mysqlConfigured: boolean;
     vercelReady: boolean;
   };
 }

@@ -52,6 +52,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     { tab: 'products', label: 'Products', icon: ShoppingBag },
     { tab: 'featured', label: 'Featured Work', icon: FolderGit2 },
     { tab: 'about', label: 'About Us', icon: Building2 },
+    { tab: 'team', label: 'Team', icon: Users },
     { tab: 'careers', label: 'Careers', icon: GraduationCap, badge: 'Hiring' },
     { tab: 'blogs', label: 'Blogs', icon: BookOpen },
     { tab: 'gallery', label: 'Gallery', icon: Image },

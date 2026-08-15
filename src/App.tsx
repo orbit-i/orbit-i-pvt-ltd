@@ -34,6 +34,7 @@ import { PaymentModal } from './components/PaymentModal';
 
 import { HomePage } from './components/pages/HomePage';
 import { AboutPage } from './components/pages/AboutPage';
+import { TeamPage } from './components/pages/TeamPage';
 import { ServicesPage } from './components/pages/ServicesPage';
 import { ProductsPage } from './components/pages/ProductsPage';
 import { BlogsPage } from './components/pages/BlogsPage';
@@ -187,6 +188,14 @@ export default function App() {
 
         {activeTab === 'about' && (
           <AboutPage
+            settings={settings}
+            setActiveTab={setActiveTab}
+            onOpenEstimator={() => setEstimatorOpen(true)}
+          />
+        )}
+
+        {activeTab === 'team' && (
+          <TeamPage
             settings={settings}
             setActiveTab={setActiveTab}
             onOpenEstimator={() => setEstimatorOpen(true)}
