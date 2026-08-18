@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   NavigationTab,
   SiteSettings
@@ -18,7 +18,9 @@ import {
   Image,
   Mail,
   PhoneCall,
+  ShieldCheck,
   KeyRound,
+  ChevronDown,
   ChevronRight,
   Activity,
   FolderGit2
@@ -29,18 +31,16 @@ interface NavbarProps {
   activeTab: NavigationTab;
   setActiveTab: (tab: NavigationTab) => void;
   settings?: SiteSettings;
-  onOpenEstimator?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
   settings,
-  onOpenEstimator,
 }) => {
   const [sidebarMenuOpen, setSidebarMenuOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [authRole, setAuthRole] = useState<'admin' | 'client'>('admin');
+  const [authRole, setAuthRole] = useState<'admin' | 'client'>('client');
 
   const navLinks: { tab: NavigationTab; label: string; icon: React.ElementType; badge?: string }[] = [
     { tab: 'home', label: 'Home', icon: Home },
@@ -48,7 +48,6 @@ export const Navbar: React.FC<NavbarProps> = ({
     { tab: 'products', label: 'Products', icon: ShoppingBag },
     { tab: 'featured', label: 'Featured Work', icon: FolderGit2 },
     { tab: 'about', label: 'About Us', icon: Building2 },
-    { tab: 'team', label: 'Team', icon: Users },
     { tab: 'careers', label: 'Careers', icon: GraduationCap, badge: 'Hiring' },
     { tab: 'blogs', label: 'Blogs', icon: BookOpen },
     { tab: 'gallery', label: 'Gallery', icon: Image },
@@ -61,21 +60,40 @@ export const Navbar: React.FC<NavbarProps> = ({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Keyboard shortcut listener for discreet SuperAdmin access (Ctrl+Shift+A or Cmd+Shift+A)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
+        e.preventDefault();
+        handleNavClick('admin');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
     <>
       <header className="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-md border-b border-slate-800 text-slate-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-18">
-            {/* Logo */}
+            {/* Logo with optional secret Alt/Ctrl click for admin */}
             <button
-              onClick={() => handleNavClick('home')}
+              onClick={(e) => {
+                if (e.altKey || e.ctrlKey || e.metaKey) {
+                  handleNavClick('admin');
+                } else {
+                  handleNavClick('home');
+                }
+              }}
               className="flex items-center gap-3 group text-left cursor-pointer focus:outline-none"
               id="brand-logo-btn"
+              title="Orbit-I Pvt Ltd (Tip: Ctrl+Shift+A for Admin)"
             >
               <img
                 src="/logo.png"
                 alt="ORBIT-I logo"
-                className="w-9 h-9 rounded-xl object-cover shadow-sm shrink-0"
+                className="w-9 h-9 rounded-xl object-cover shadow-sm group-hover:scale-105 transition-transform shrink-0"
               />
               <div>
                 <div className="flex items-center gap-1.5">
@@ -120,41 +138,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Actions */}
             <div className="hidden lg:flex items-center gap-2.5">
               <button
-                onClick={() => {
-                  setAuthRole('admin');
-                  setAuthModalOpen(true);
-                }}
-                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-400 hover:text-white transition-colors cursor-pointer"
+                onClick={() => handleNavClick('contact')}
+                className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-xs transition-colors cursor-pointer"
               >
-                <KeyRound className="w-3.5 h-3.5" />
-                <span>Sign In</span>
+                <Mail className="w-3.5 h-3.5" />
+                <span>Contact Us</span>
               </button>
-
-              {/* AI Cost Estimator CTA */}
-              {onOpenEstimator && (
-                <button
-                  onClick={onOpenEstimator}
-                  id="ai-estimator-top-btn"
-                  className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-xs transition-colors cursor-pointer"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>AI Cost Estimator</span>
-                </button>
-              )}
             </div>
 
             {/* Mobile Hamburger Button */}
             <div className="flex items-center gap-2 lg:hidden">
-              {onOpenEstimator && (
-                <button
-                  onClick={onOpenEstimator}
-                  className="p-2 rounded-xl bg-blue-950/60 text-blue-400 border border-blue-800 text-xs font-semibold flex items-center gap-1"
-                  aria-label="Open AI Cost Estimator"
-                >
-                  <Sparkles className="w-4 h-4" />
-                </button>
-              )}
-
               <button
                 onClick={() => setSidebarMenuOpen(true)}
                 className="p-2.5 rounded-xl bg-slate-900 text-slate-200 hover:bg-slate-800 border border-slate-800 transition-colors cursor-pointer flex items-center justify-center"
@@ -263,36 +256,34 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Drawer Footer Actions */}
             <div className="p-3 border-t border-slate-800 bg-slate-900/60 space-y-2">
-              {onOpenEstimator && (
-                <button
-                  onClick={() => {
-                    setSidebarMenuOpen(false);
-                    onOpenEstimator();
-                  }}
-                  className="w-full py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-sm cursor-pointer transition-colors"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  <span>Instant AI Project Estimator</span>
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  setSidebarMenuOpen(false);
+                  handleNavClick('contact');
+                }}
+                className="w-full py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-sm cursor-pointer transition-colors"
+              >
+                <Mail className="w-4 h-4" />
+                <span>Contact Orbit-I</span>
+              </button>
 
               <div className="flex items-center justify-between pt-1 px-1">
                 <button
                   type="button"
                   onClick={() => {
                     setSidebarMenuOpen(false);
-                    setAuthRole('admin');
+                    setAuthRole('client');
                     setAuthModalOpen(true);
                   }}
                   className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-blue-400 cursor-pointer"
                 >
                   <KeyRound className="w-3.5 h-3.5" />
-                  <span>Sign In / Reset Password</span>
+                  <span>Client Sign In</span>
                 </button>
 
                 <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-mono">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>SLA 99.99%</span>
+                  <span>Systems Operational</span>
                 </div>
               </div>
             </div>

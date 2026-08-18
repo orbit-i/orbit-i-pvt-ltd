@@ -28,13 +28,11 @@ import {
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { ThreeVisuals } from './components/ThreeVisuals';
-import { AiCostEstimator } from './components/AiCostEstimator';
 import { AiChatWidget } from './components/AiChatWidget';
 import { PaymentModal } from './components/PaymentModal';
 
 import { HomePage } from './components/pages/HomePage';
 import { AboutPage } from './components/pages/AboutPage';
-import { TeamPage } from './components/pages/TeamPage';
 import { ServicesPage } from './components/pages/ServicesPage';
 import { ProductsPage } from './components/pages/ProductsPage';
 import { BlogsPage } from './components/pages/BlogsPage';
@@ -47,8 +45,73 @@ import { SuperAdminDashboard } from './components/admin/SuperAdminDashboard';
 import { ClientPortal } from './components/client/ClientPortal';
 
 export default function App() {
-  // Navigation State
-  const [activeTab, setActiveTab] = useState<NavigationTab>('home');
+  // Gates the SuperAdmin UI behind a real secret value, not a guessable word.
+  // This is obscurity, not the actual security boundary — the real
+  // protection is server-side: every admin API route requires a valid
+  // signed JWT regardless of how someone reaches this screen (see
+  // server.ts / security.ts). This just keeps casual visitors from
+  // stumbling onto the login screen by guessing "?admin=true" or "#admin".
+  //
+  // Set VITE_ADMIN_ACCESS_KEY in your environment (Vercel project settings)
+  // to a long random string, then reach the panel via:
+  //   https://yoursite.com/?access=<that-string>
+  const checkIsSecretAdminUrl = () => {
+    try {
+      const accessKey = import.meta.env.VITE_ADMIN_ACCESS_KEY as string | undefined;
+      if (!accessKey) return false; // no key configured = no way in via URL at all
+      const params = new URLSearchParams(window.location.search);
+      return params.get('access') === accessKey;
+    } catch {
+      return false;
+    }
+  };
+
+  // Initialize navigation tab from secret URL or default
+  const [activeTab, setActiveTab] = useState<NavigationTab>(() => {
+    if (typeof window !== 'undefined' && checkIsSecretAdminUrl()) {
+      return 'admin';
+    }
+    return 'home';
+  });
+
+  // Listen for URL changes
+  useEffect(() => {
+    const handleUrlChange = () => {
+      if (checkIsSecretAdminUrl()) {
+        setActiveTab('admin');
+      } else {
+        const hash = window.location.hash.replace('#', '').replace('/', '');
+        const validTabs: NavigationTab[] = [
+          'home',
+          'services',
+          'products',
+          'featured',
+          'about',
+          'careers',
+          'blogs',
+          'gallery',
+          'contact',
+          'client-portal',
+        ];
+        if (validTabs.includes(hash as NavigationTab)) {
+          setActiveTab(hash as NavigationTab);
+        }
+      }
+    };
+
+    window.addEventListener('hashchange', handleUrlChange);
+    window.addEventListener('popstate', handleUrlChange);
+
+    // Initial check on mount
+    if (checkIsSecretAdminUrl()) {
+      setActiveTab('admin');
+    }
+
+    return () => {
+      window.removeEventListener('hashchange', handleUrlChange);
+      window.removeEventListener('popstate', handleUrlChange);
+    };
+  }, []);
 
   // Enforce Dark Mode Permanently
   useEffect(() => {
@@ -67,7 +130,6 @@ export default function App() {
   const [settings, setSettings] = useState<SiteSettings>(initialSettings);
 
   // Modals State
-  const [estimatorOpen, setEstimatorOpen] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentDetails, setPaymentDetails] = useState<{
     title: string;
@@ -167,7 +229,6 @@ export default function App() {
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           settings={settings}
-          onOpenEstimator={() => setEstimatorOpen(true)}
         />
       )}
 
@@ -181,7 +242,6 @@ export default function App() {
             caseStudies={caseStudies}
             settings={settings}
             setActiveTab={setActiveTab}
-            onOpenEstimator={() => setEstimatorOpen(true)}
             onBuyProduct={handleBuyProduct}
           />
         )}
@@ -190,15 +250,6 @@ export default function App() {
           <AboutPage
             settings={settings}
             setActiveTab={setActiveTab}
-            onOpenEstimator={() => setEstimatorOpen(true)}
-          />
-        )}
-
-        {activeTab === 'team' && (
-          <TeamPage
-            settings={settings}
-            setActiveTab={setActiveTab}
-            onOpenEstimator={() => setEstimatorOpen(true)}
           />
         )}
 
@@ -206,7 +257,6 @@ export default function App() {
           <ServicesPage
             services={services}
             setActiveTab={setActiveTab}
-            onOpenEstimator={() => setEstimatorOpen(true)}
           />
         )}
 
@@ -234,7 +284,6 @@ export default function App() {
           <FeaturedWorkPage
             caseStudies={caseStudies}
             setActiveTab={setActiveTab}
-            onOpenEstimator={() => setEstimatorOpen(true)}
           />
         )}
 
@@ -242,7 +291,6 @@ export default function App() {
           <ContactPage
             settings={settings}
             setActiveTab={setActiveTab}
-            onOpenEstimator={() => setEstimatorOpen(true)}
           />
         )}
 
@@ -288,16 +336,8 @@ export default function App() {
         <AiChatWidget
           settings={settings}
           setActiveTab={setActiveTab}
-          onOpenEstimator={() => setEstimatorOpen(true)}
         />
       )}
-
-      {/* AI Cost Estimator Modal */}
-      <AiCostEstimator
-        isOpen={estimatorOpen}
-        onClose={() => setEstimatorOpen(false)}
-        setActiveTab={setActiveTab}
-      />
 
       {/* Secure Payment Gateway Modal */}
       <PaymentModal
@@ -316,7 +356,6 @@ export default function App() {
           settings={settings}
           services={services}
           setActiveTab={setActiveTab}
-          onOpenEstimator={() => setEstimatorOpen(true)}
         />
       )}
     </div>

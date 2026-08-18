@@ -15,6 +15,7 @@ import {
   Check
 } from 'lucide-react';
 import { InquiryLead } from '../../../types';
+import { apiFetch } from '../../../lib/apiClient';
 
 interface AdminLeadsTabProps {
   leads: InquiryLead[];
@@ -49,7 +50,7 @@ export const AdminLeadsTab: React.FC<AdminLeadsTabProps> = ({
     setDraftingAi(true);
     setAiProposal(null);
     try {
-      const res = await fetch('/api/ai/draft-proposal', {
+      const res = await apiFetch('/api/ai/draft-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -88,7 +89,7 @@ export const AdminLeadsTab: React.FC<AdminLeadsTabProps> = ({
             CRM Pipeline & Inbound Client Inquiries
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Review incoming project leads from the Website Form and AI Cost Estimator, update CRM stage, and generate AI proposals.
+            Review incoming project leads from the Website Consultation Form, update CRM stage, and generate AI proposals.
           </p>
         </div>
 

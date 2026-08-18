@@ -11,14 +11,15 @@ import {
   ShieldAlert,
   ArrowRight
 } from 'lucide-react';
+import { apiFetch } from '../lib/apiClient';
 
-export const AiChatWidget: React.FC<{ onOpenEstimator: () => void }> = ({ onOpenEstimator }) => {
+export const AiChatWidget: React.FC<{ settings?: any; setActiveTab?: (tab: any) => void }> = ({ settings, setActiveTab }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Array<{ sender: 'user' | 'bot'; text: string; time: string }>>([
     {
       sender: 'bot',
-      text: "👋 Welcome to **Orbit-I Private Limited**!\n\nI am your **AI Solutions Advisor**, trained on our full catalog of **Enterprise AI**, **Python RPA & Playwright Scraping**, **React 19 / TypeScript Web & Mobile Platforms**, and **Hostinger MySQL / Supabase** architectures.\n\nHow can I help you today? Feel free to ask about project costs, our Paid Internship Cohort 2026, or portal demos!",
+      text: "👋 Welcome to **ORBIT-I**!\n\nI am your **AI Solutions Advisor**, trained on our full catalog of **Enterprise AI**, **Python RPA & Playwright Scraping**, **React 19 / TypeScript Web & Mobile Platforms**, and **MySQL** architectures.\n\nHow can I help you today? Feel free to ask about project costs, current openings, or portal demos!",
       time: 'Just now',
     },
   ]);
@@ -44,7 +45,7 @@ export const AiChatWidget: React.FC<{ onOpenEstimator: () => void }> = ({ onOpen
     setLoading(true);
 
     try {
-      const res = await fetch('/api/ai/chat', {
+      const res = await apiFetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -69,7 +70,7 @@ export const AiChatWidget: React.FC<{ onOpenEstimator: () => void }> = ({ onOpen
         ...prev,
         {
           sender: 'bot',
-          text: "Thank you for reaching out to **ORBIT-I (Private) Limited**. Our senior engineering team is also directly reachable at `orbiti2026@gmail.com` or via our **Instant Project Estimator**!",
+          text: "Thank you for reaching out to **Orbit-I Private Limited**. Our senior engineering team is directly reachable at `contact@orbit-i.com` or via our Contact form!",
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
@@ -201,18 +202,20 @@ export const AiChatWidget: React.FC<{ onOpenEstimator: () => void }> = ({ onOpen
 
           {/* Quick Action Chips */}
           <div className="px-3 py-2 bg-slate-950/70 border-b border-slate-800/70 flex items-center gap-1.5 overflow-x-auto text-[10px] no-scrollbar text-left">
+            {setActiveTab && (
+              <button
+                onClick={() => {
+                  setIsOpen(false);
+                  setActiveTab('contact');
+                }}
+                className="px-2.5 py-1 rounded-lg bg-blue-600/30 text-cyan-300 border border-blue-500/30 whitespace-nowrap hover:bg-blue-600/50 flex items-center gap-1 cursor-pointer font-medium"
+              >
+                <Sparkles className="w-3 h-3 text-cyan-300" />
+                <span>Contact Orbit-I</span>
+              </button>
+            )}
             <button
-              onClick={() => {
-                setIsOpen(false);
-                onOpenEstimator();
-              }}
-              className="px-2.5 py-1 rounded-lg bg-blue-600/30 text-cyan-300 border border-blue-500/30 whitespace-nowrap hover:bg-blue-600/50 flex items-center gap-1 cursor-pointer font-medium"
-            >
-              <Sparkles className="w-3 h-3 text-cyan-300" />
-              <span>Instant AI Cost Estimator</span>
-            </button>
-            <button
-              onClick={() => sendQuery('What are the internship program stipend and tracks for Cohort 2026?')}
+              onClick={() => sendQuery('What internship or career openings do you currently have?')}
               className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 whitespace-nowrap hover:bg-slate-700 hover:text-white cursor-pointer"
             >
               Internships 2026

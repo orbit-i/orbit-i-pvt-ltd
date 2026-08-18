@@ -15,18 +15,17 @@ import {
   Loader2,
   Calendar
 } from 'lucide-react';
+import { apiFetch } from '../../lib/apiClient';
 
 interface ContactPageProps {
   settings?: SiteSettings;
   setActiveTab: (tab: NavigationTab) => void;
-  onOpenEstimator?: () => void;
   onLeadSubmitted?: (lead: any) => void;
 }
 
 export const ContactPage: React.FC<ContactPageProps> = ({
   settings = INITIAL_SETTINGS,
   setActiveTab,
-  onOpenEstimator,
   onLeadSubmitted,
 }) => {
   const [fullName, setFullName] = useState('');
@@ -49,7 +48,7 @@ export const ContactPage: React.FC<ContactPageProps> = ({
     },
     {
       q: 'Which database and hosting platforms do you support?',
-      a: 'Our architectures are engineered for high-availability multi-cloud deployment. We natively support Hostinger MySQL, Supabase PostgreSQL, Vercel Edge, AWS, and Docker container clusters with 99.99% SLA.',
+      a: 'This site runs on MySQL and Vercel edge deployment. For client projects, we also work with PostgreSQL/Supabase and other cloud infrastructure depending on the project\'s needs.',
     },
     {
       q: 'How does the SuperAdmin panel and Client Dashboard work?',
@@ -79,7 +78,7 @@ export const ContactPage: React.FC<ContactPageProps> = ({
         source: 'Contact Page Inquiry Form',
       };
 
-      const res = await fetch('/api/leads', {
+      const res = await apiFetch('/api/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -150,16 +149,6 @@ export const ContactPage: React.FC<ContactPageProps> = ({
                   <p className="text-emerald-400 font-medium">24/7 Priority Emergency Support</p>
                 </div>
               </div>
-            </div>
-
-            <div className="pt-4 border-t border-slate-800">
-              <button
-                onClick={onOpenEstimator}
-                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold shadow-md flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
-                <span>Launch AI Scope Estimator</span>
-              </button>
             </div>
           </div>
 

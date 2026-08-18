@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { INITIAL_SUPPORT_TICKETS } from '../../data/initialData';
 import { ClientDataTab } from './ClientDataTab';
+import { apiFetch } from '../../lib/apiClient';
 import { AuthModal } from '../auth/AuthModal';
 
 interface ClientPortalProps {
@@ -74,7 +75,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
   const activeProject = projects.find((p) => p.id === selectedProjectId) || projects[0];
 
   useEffect(() => {
-    fetch('/api/support/tickets')
+    apiFetch('/api/support/tickets')
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) setTickets(data);
@@ -124,7 +125,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
     setTicketSubject('');
     setTicketMessage('');
 
-    fetch('/api/support/tickets', {
+    apiFetch('/api/support/tickets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newTicket),
@@ -158,7 +159,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
     setTickets(updated);
     setReplyMessage('');
 
-    fetch(`/api/support/tickets/${selectedTicketId}/reply`, {
+    apiFetch(`/api/support/tickets/${selectedTicketId}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

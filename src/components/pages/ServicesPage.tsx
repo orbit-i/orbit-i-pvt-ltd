@@ -19,13 +19,11 @@ import {
 interface ServicesPageProps {
   services?: ServiceItem[];
   setActiveTab: (tab: NavigationTab) => void;
-  onOpenEstimator?: () => void;
 }
 
 export const ServicesPage: React.FC<ServicesPageProps> = ({
   services = [],
   setActiveTab,
-  onOpenEstimator,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
 
@@ -175,17 +173,11 @@ export const ServicesPage: React.FC<ServicesPageProps> = ({
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={onOpenEstimator}
-                  className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
-                  <span>Scope with AI</span>
-                </button>
-                <button
                   onClick={() => setActiveTab('contact')}
-                  className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
+                  className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md flex items-center justify-center gap-1.5 cursor-pointer transition-all"
                 >
-                  Contact
+                  <span>Inquire for Project</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>

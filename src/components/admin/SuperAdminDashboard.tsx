@@ -26,15 +26,26 @@ import {
   ChevronRight,
   ExternalLink,
   Search,
-  Lock
+  Lock,
+  Home,
+  Info,
+  Image,
+  FolderKanban,
+  FileCode2,
+  Sliders,
+  Copy,
+  Check,
+  Link2,
+  EyeOff
 } from 'lucide-react';
+import { apiFetch, setAuthToken } from '../../lib/apiClient';
 import {
   ServiceItem,
   ProductItem,
   BlogPost,
   CareerOpening,
   GalleryItem,
-  CaseStudy,
+  CaseStudyItem,
   SiteSettings,
   InquiryLead,
   JobApplication,
@@ -58,6 +69,13 @@ import { AdminDatabaseTab } from './tabs/AdminDatabaseTab';
 import { AdminBlogsTab } from './tabs/AdminBlogsTab';
 import { AdminDataTab } from './tabs/AdminDataTab';
 import { AdminSettingsTab } from './tabs/AdminSettingsTab';
+import { AdminHomePageTab } from './tabs/AdminHomePageTab';
+import { AdminAboutTab } from './tabs/AdminAboutTab';
+import { AdminServicesTab } from './tabs/AdminServicesTab';
+import { AdminProductsTab } from './tabs/AdminProductsTab';
+import { AdminFeaturedWorkTab } from './tabs/AdminFeaturedWorkTab';
+import { AdminCareersTab } from './tabs/AdminCareersTab';
+import { AdminGalleryTab } from './tabs/AdminGalleryTab';
 import { AuthModal } from '../auth/AuthModal';
 
 interface SuperAdminDashboardProps {
@@ -71,8 +89,8 @@ interface SuperAdminDashboardProps {
   setCareers: React.Dispatch<React.SetStateAction<CareerOpening[]>>;
   gallery: GalleryItem[];
   setGallery: React.Dispatch<React.SetStateAction<GalleryItem[]>>;
-  caseStudies?: CaseStudy[];
-  setCaseStudies?: React.Dispatch<React.SetStateAction<CaseStudy[]>>;
+  caseStudies?: CaseStudyItem[];
+  setCaseStudies?: React.Dispatch<React.SetStateAction<CaseStudyItem[]>>;
   projects: ProjectTracking[];
   setProjects: React.Dispatch<React.SetStateAction<ProjectTracking[]>>;
   invoices: InvoiceItem[];
@@ -94,7 +112,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   gallery = [],
   setGallery,
   caseStudies = [],
-  setCaseStudies,
+  setCaseStudies = () => {},
   projects = [],
   setProjects,
   invoices = [],
@@ -105,28 +123,47 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 }) => {
   const [adminTab, setAdminTab] = useState<
     | 'overview'
+    | 'home-page'
+    | 'about-page'
+    | 'services'
+    | 'products'
+    | 'featured-work'
+    | 'careers'
+    | 'gallery'
+    | 'blogs'
     | 'projects'
     | 'invoices'
     | 'tickets'
     | 'leads'
-    | 'blogs'
-    | 'services'
-    | 'products'
-    | 'careers'
-    | 'database'
     | 'data'
+    | 'database'
+    | 'audit'
     | 'ai-studio'
     | 'settings'
-    | 'audit'
   >('overview');
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalRole, setAuthModalRole] = useState<'admin' | 'client'>('admin');
+  const [copiedSecretUrl, setCopiedSecretUrl] = useState(false);
+
+  const getSecretAdminUrl = () => {
+    if (typeof window !== 'undefined') {
+      return `${window.location.origin}/#superadmin`;
+    }
+    return 'https://orbit-i.com/#superadmin';
+  };
+
+  const handleCopySecretUrl = () => {
+    const url = getSecretAdminUrl();
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedSecretUrl(true);
+      setTimeout(() => setCopiedSecretUrl(false), 3000);
+    });
+  };
 
   // Leads, Tickets, Applications & Logs State
   const [leads, setLeads] = useState<InquiryLead[]>([]);
-  const [applications, setApplications] = useState<JobApplication[]>([]);
   const [tickets, setTickets] = useState<SupportTicket[]>([...INITIAL_SUPPORT_TICKETS]);
   const [auditLogs, setAuditLogs] = useState<SystemAuditLog[]>([...INITIAL_AUDIT_LOGS]);
 
@@ -136,30 +173,23 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState<any>(null);
 
-  // Fetch live leads, applications, tickets, logs on mount
+  // Fetch live leads, tickets, logs on mount
   useEffect(() => {
-    fetch('/api/leads')
+    apiFetch('/api/leads')
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) setLeads(data);
       })
       .catch(console.error);
 
-    fetch('/api/careers/applications')
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) setApplications(data);
-      })
-      .catch(console.error);
-
-    fetch('/api/support/tickets')
+    apiFetch('/api/support/tickets')
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) setTickets(data);
       })
       .catch(console.error);
 
-    fetch('/api/audit-logs')
+    apiFetch('/api/audit-logs')
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) setAuditLogs(data);
@@ -172,7 +202,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     if (!aiTopic.trim()) return;
     setAiLoading(true);
     try {
-      const res = await fetch('/api/ai/generate-content', {
+      const res = await apiFetch('/api/ai/generate-content', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -189,12 +219,12 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     }
   };
 
-  // Structured Navigation Groups for Left Sidebar
+  // Structured Navigation Groups for Left Sidebar - Complete Page CMS & Operations
   const navSections = [
     {
-      group: 'Core Operations',
+      group: 'Operations & CRM',
       items: [
-        { id: 'overview', label: 'Overview & KPIs', icon: LayoutDashboard },
+        { id: 'overview', label: 'Executive Overview', icon: LayoutDashboard },
         { id: 'projects', label: 'Client Projects', icon: Briefcase, count: projects.length },
         { id: 'invoices', label: 'Billing & Invoices', icon: Receipt, count: invoices.length },
         {
@@ -212,33 +242,37 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
       ],
     },
     {
-      group: 'Content & CMS',
+      group: 'Manage All Pages',
       items: [
-        { id: 'blogs', label: 'Blog Writing CMS', icon: BookOpen, count: blogs.length },
+        { id: 'home-page', label: 'Home Page CMS', icon: Home },
+        { id: 'about-page', label: 'About Us CMS', icon: Info },
         { id: 'services', label: 'Services Catalog', icon: Layers, count: services.length },
-        { id: 'products', label: 'SaaS Products', icon: ShoppingBag, count: products.length },
-        { id: 'careers', label: 'Careers & Hiring', icon: GraduationCap, count: applications.length },
-        { id: 'ai-studio', label: 'AI Content Studio', icon: Sparkles },
+        { id: 'products', label: 'SaaS & AI Products', icon: ShoppingBag, count: products.length },
+        { id: 'featured-work', label: 'Featured Case Studies', icon: FolderKanban, count: caseStudies.length },
+        { id: 'careers', label: 'Careers & Cohorts', icon: GraduationCap, count: careers.length },
+        { id: 'gallery', label: 'Gallery & Media', icon: Image, count: gallery.length },
+        { id: 'blogs', label: 'Blog Posts CMS', icon: BookOpen, count: blogs.length },
       ],
     },
     {
-      group: 'System & Data',
+      group: 'System & Tools',
       items: [
-        { id: 'data', label: 'Data Management', icon: HardDrive },
+        { id: 'ai-studio', label: 'AI Content Studio', icon: Sparkles },
+        { id: 'data', label: 'Data Hub & Backups', icon: HardDrive },
         { id: 'database', label: 'Database & DevOps', icon: Database },
         { id: 'audit', label: 'Security Audit Logs', icon: ShieldCheck },
-        { id: 'settings', label: 'Footer & Site Settings', icon: Settings },
+        { id: 'settings', label: 'Site & Footer Settings', icon: Settings },
       ],
     },
   ];
 
   return (
-    <div id="superadmin-root" className="min-h-screen bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
+    <div id="superadmin-root" className="min-h-screen bg-slate-950 text-slate-100 transition-colors">
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
         <div
           onClick={() => setSidebarOpen(false)}
-          className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs lg:hidden"
+          className="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-xs lg:hidden"
         />
       )}
 
@@ -248,26 +282,26 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         {/* LEFT SIDEBAR NAVIGATION */}
         {/* ========================================================================= */}
         <aside
-          className={`fixed lg:static inset-y-0 left-0 z-50 w-72 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between transition-transform duration-300 ease-in-out ${
+          className={`fixed lg:static inset-y-0 left-0 z-50 w-72 bg-slate-900 border-r border-slate-800 flex flex-col justify-between transition-transform duration-300 ease-in-out ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
           }`}
         >
           {/* Top Brand & Workspace Header */}
-          <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+          <div className="p-4 border-b border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-base shadow-sm">
-                Ø
+                <img src="/logo.png" alt="ORBIT-I" className="w-full h-full object-cover" />
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
-                  <span className="font-bold text-sm tracking-tight text-slate-900 dark:text-white">
+                  <span className="font-bold text-sm tracking-tight text-white">
                     Orbit-I Admin
                   </span>
-                  <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
+                  <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-blue-950 text-blue-400 border border-blue-800">
                     ROOT
                   </span>
                 </div>
-                <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-[140px]">
+                <div className="text-[11px] text-slate-400 truncate max-w-[140px]">
                   {settings.legalEntity}
                 </div>
               </div>
@@ -275,7 +309,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
             <button
               onClick={() => setSidebarOpen(false)}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 lg:hidden"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 lg:hidden cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -302,7 +336,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                         className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                           isActive
                             ? 'bg-blue-600 text-white shadow-xs'
-                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                            : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
                         }`}
                       >
                         <div className="flex items-center gap-2.5">
@@ -314,7 +348,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                             className={`text-[10px] px-1.5 py-0.2 rounded-md font-bold ${
                               isActive
                                 ? 'bg-white/20 text-white'
-                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                                : 'bg-slate-800 text-slate-400'
                             }`}
                           >
                             {item.count}
@@ -328,23 +362,21 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             ))}
           </div>
 
-          {/* Bottom Controls: User, Theme Switcher & Portals */}
-          <div className="p-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
-            {/* Quick Portal Switch */}
+          {/* Bottom Controls: Client Portal Switcher & Auth */}
+          <div className="p-3 border-t border-slate-800 space-y-2">
             {setActiveTab && (
               <button
                 onClick={() => setActiveTab('client-portal')}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700/80 transition-colors cursor-pointer"
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-2">
-                  <Briefcase className="w-3.5 h-3.5 text-blue-500" />
+                  <Briefcase className="w-3.5 h-3.5 text-blue-400" />
                   <span>Switch to Client Portal</span>
                 </div>
                 <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
               </button>
             )}
 
-            {/* Auth / Password Controls */}
             <div className="flex items-center justify-between pt-1">
               <button
                 type="button"
@@ -352,14 +384,14 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                   setAuthModalRole('admin');
                   setAuthModalOpen(true);
                 }}
-                className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-blue-400 cursor-pointer"
+                className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-cyan-400 cursor-pointer"
                 title="Account Credentials & Password Reset"
               >
                 <KeyRound className="w-3.5 h-3.5" />
                 <span>Security / Password</span>
               </button>
 
-              <span className="text-[10px] text-slate-500 font-mono">Dark Mode</span>
+              <span className="text-[10px] text-slate-500 font-mono">Dark Core</span>
             </div>
           </div>
         </aside>
@@ -367,37 +399,70 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         {/* ========================================================================= */}
         {/* RIGHT MAIN CONTENT WORKSPACE */}
         {/* ========================================================================= */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+        <div className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-slate-950">
           {/* Top Bar for Mobile & Breadcrumbs */}
-          <header className="sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-3.5 flex items-center justify-between">
+          <header className="sticky top-0 z-30 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 sm:px-6 py-3.5 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden"
+                className="p-2 rounded-xl text-slate-300 hover:bg-slate-800 lg:hidden cursor-pointer"
                 aria-label="Open sidebar navigation"
               >
                 <Menu className="w-5 h-5" />
               </button>
               <div>
-                <div className="text-xs text-slate-400">SuperAdmin / Workspace</div>
-                <h1 className="text-sm font-bold text-slate-900 dark:text-slate-100 capitalize">
+                <div className="text-xs text-slate-400">SuperAdmin Center</div>
+                <h1 className="text-sm font-bold text-slate-100 capitalize">
                   {adminTab.replace('-', ' ')}
                 </h1>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs text-slate-600 dark:text-slate-300 font-mono">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Node: Active</span>
+            <div className="flex items-center gap-2 sm:gap-3">
+              {/* Copy Secret URL Button */}
+              <button
+                onClick={handleCopySecretUrl}
+                title="Copy direct secret URL for SuperAdmin bookmarking"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                  copiedSecretUrl
+                    ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300 shadow-xs'
+                    : 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-cyan-300 hover:text-cyan-200'
+                }`}
+              >
+                {copiedSecretUrl ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Secret URL Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Link2 className="w-3.5 h-3.5 text-cyan-400" />
+                    <span className="hidden sm:inline">Copy Secret URL</span>
+                    <span className="sm:hidden">Secret URL</span>
+                  </>
+                )}
+              </button>
+
+              <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 font-mono">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Sync: Active</span>
               </div>
 
               {setActiveTab && (
                 <button
-                  onClick={() => setActiveTab('home')}
-                  className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                  onClick={() => {
+                    setAuthToken(null);
+                    window.location.hash = '';
+                    // Strip the ?access=... secret key from the URL bar so it's not left visible/bookmarked
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete('access');
+                    window.history.replaceState({}, '', url.toString());
+                    setActiveTab('home');
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 border border-rose-500 cursor-pointer flex items-center gap-1.5"
                 >
-                  Exit to Website
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Sign Out</span>
                 </button>
               )}
             </div>
@@ -420,7 +485,45 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
               />
             )}
 
-            {/* Client Projects & Specs */}
+            {/* Home Page CMS */}
+            {adminTab === 'home-page' && (
+              <AdminHomePageTab settings={settings} setSettings={setSettings} />
+            )}
+
+            {/* About Us Page CMS */}
+            {adminTab === 'about-page' && (
+              <AdminAboutTab settings={settings} setSettings={setSettings} />
+            )}
+
+            {/* Services Catalog */}
+            {adminTab === 'services' && (
+              <AdminServicesTab services={services} setServices={setServices} />
+            )}
+
+            {/* SaaS & AI Products */}
+            {adminTab === 'products' && (
+              <AdminProductsTab products={products} setProducts={setProducts} />
+            )}
+
+            {/* Featured Work & Case Studies */}
+            {adminTab === 'featured-work' && (
+              <AdminFeaturedWorkTab
+                caseStudies={caseStudies}
+                setCaseStudies={setCaseStudies}
+              />
+            )}
+
+            {/* Careers & Cohort 2026 */}
+            {adminTab === 'careers' && (
+              <AdminCareersTab careers={careers} setCareers={setCareers} />
+            )}
+
+            {/* Gallery & Showcase Assets */}
+            {adminTab === 'gallery' && (
+              <AdminGalleryTab gallery={gallery} setGallery={setGallery} />
+            )}
+
+            {/* Client Projects & Milestones */}
             {adminTab === 'projects' && (
               <AdminProjectsTab projects={projects} setProjects={setProjects} />
             )}
@@ -477,266 +580,15 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             {/* Database & DevOps */}
             {adminTab === 'database' && <AdminDatabaseTab />}
 
-            {/* Services CMS */}
-            {adminTab === 'services' && (
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                      <Layers className="w-5 h-5 text-blue-500" />
-                      <span>Enterprise Services Catalog ({services.length})</span>
-                    </h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                      Manage enterprise capabilities, pricing retainers, and delivery commitments.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      const newS: ServiceItem = {
-                        id: `srv-${Date.now()}`,
-                        title: 'Custom Engineering Pod',
-                        category: 'AI & ML',
-                        shortDesc: 'Dedicated enterprise engineering pod delivering custom solutions.',
-                        fullDesc: 'End-to-end architecture, API integrations, and SLA-backed maintenance.',
-                        icon: 'Cpu',
-                        features: ['Requirements Analysis', 'Cloud Setup', '24/7 Monitoring'],
-                        technologies: ['React 19', 'Python 3.12', 'PostgreSQL'],
-                        startingPrice: 3499,
-                        deliveryTime: '3-5 Weeks',
-                        popular: false,
-                      };
-                      const updated = [newS, ...services];
-                      setServices(updated);
-                      fetch('/api/content/services', {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(updated),
-                      }).catch(console.error);
-                    }}
-                    className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Add Service</span>
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {services.map((srv) => (
-                    <div
-                      key={srv.id}
-                      className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-start justify-between gap-3 text-xs"
-                    >
-                      <div className="space-y-1">
-                        <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase tracking-wider">
-                          {srv.category}
-                        </span>
-                        <div className="font-bold text-slate-900 dark:text-slate-100 text-sm">
-                          {srv.title}
-                        </div>
-                        <div className="text-slate-500 dark:text-slate-400 line-clamp-2">
-                          {srv.shortDesc}
-                        </div>
-                        <div className="text-slate-900 dark:text-slate-200 font-semibold pt-1">
-                          ${srv.startingPrice.toLocaleString()} • Delivery: {srv.deliveryTime}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          const updated = services.filter((s) => s.id !== srv.id);
-                          setServices(updated);
-                          fetch('/api/content/services', {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(updated),
-                          }).catch(console.error);
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                        title="Remove Service"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Products CMS */}
-            {adminTab === 'products' && (
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                      <ShoppingBag className="w-5 h-5 text-indigo-500" />
-                      <span>Proprietary SaaS & Enterprise Products ({products.length})</span>
-                    </h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                      Configure software subscriptions, metrics, release versions, and documentation.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      const newP: ProductItem = {
-                        id: `prod-${Date.now()}`,
-                        name: 'Orbit-I Smart System',
-                        tagline: 'High-Throughput Enterprise Tool',
-                        category: 'Enterprise Suite',
-                        description: 'Comprehensive automation and data pipeline module for client operations.',
-                        version: 'v1.0.0',
-                        monthlyPrice: 199,
-                        annualPrice: 1990,
-                        features: ['Real-Time Sync', 'Role-Based Access', 'API Webhooks'],
-                        metrics: [{ label: 'Uptime', value: '99.99%' }, { label: 'Speedup', value: '10x' }],
-                        status: 'Live',
-                      };
-                      const updated = [newP, ...products];
-                      setProducts(updated);
-                      fetch('/api/content/products', {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(updated),
-                      }).catch(console.error);
-                    }}
-                    className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Add SaaS Product</span>
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {products.map((prod) => (
-                    <div
-                      key={prod.id}
-                      className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-start justify-between gap-3 text-xs"
-                    >
-                      <div className="space-y-1">
-                        <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider">
-                          {prod.category}
-                        </span>
-                        <div className="font-bold text-slate-900 dark:text-slate-100 text-sm">
-                          {prod.name}
-                        </div>
-                        <div className="text-slate-500 dark:text-slate-400 line-clamp-2">
-                          {prod.description}
-                        </div>
-                        <div className="text-slate-900 dark:text-slate-200 font-semibold pt-1">
-                          ${prod.monthlyPrice}/mo (${prod.annualPrice}/yr) • Version: {prod.version}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          const updated = products.filter((p) => p.id !== prod.id);
-                          setProducts(updated);
-                          fetch('/api/content/products', {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(updated),
-                          }).catch(console.error);
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                        title="Remove Product"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Careers & Talent Pipeline */}
-            {adminTab === 'careers' && (
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-6">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                    <GraduationCap className="w-5 h-5 text-emerald-500" />
-                    <span>Talent Pipeline & Applications ({applications.length})</span>
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Review candidates for engineering openings and the 2026 Internship Cohort.
-                  </p>
-                </div>
-
-                <div className="space-y-3">
-                  {applications.length === 0 ? (
-                    <div className="py-8 text-center text-xs text-slate-400">
-                      No candidate submissions in queue.
-                    </div>
-                  ) : (
-                    applications.map((app) => (
-                      <div
-                        key={app.id}
-                        className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs space-y-2"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <span className="font-bold text-slate-900 dark:text-slate-100 text-sm">
-                              {app.applicantName}
-                            </span>
-                            <span className="text-slate-500 dark:text-slate-400 ml-2 font-mono">
-                              ({app.email})
-                            </span>
-                          </div>
-                          <span
-                            className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                              app.status === 'Reviewing'
-                                ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400'
-                                : app.status === 'Accepted'
-                                ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400'
-                                : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
-                            }`}
-                          >
-                            {app.status}
-                          </span>
-                        </div>
-                        <div className="text-slate-700 dark:text-slate-300 font-semibold">{app.jobTitle}</div>
-                        {app.coverLetter && (
-                          <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-                            {app.coverLetter}
-                          </p>
-                        )}
-                        <div className="flex items-center gap-4 text-[11px] text-slate-500 font-mono pt-1">
-                          {app.portfolioUrl && (
-                            <a
-                              href={app.portfolioUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
-                            >
-                              <span>Portfolio</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
-                          )}
-                          {app.linkedinUrl && (
-                            <a
-                              href={app.linkedinUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
-                            >
-                              <span>LinkedIn</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
-                          )}
-                          <span>Applied: {app.appliedAt}</span>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-
             {/* AI Content Studio */}
             {adminTab === 'ai-studio' && (
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-6">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xs space-y-6">
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-blue-500" />
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-cyan-400" />
                     <span>Gemini AI Content & Technical Blueprint Studio</span>
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  <p className="text-xs text-slate-400 mt-0.5">
                     Generate enterprise briefs, architectural summaries, and technical specifications.
                   </p>
                 </div>
@@ -747,7 +599,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                     placeholder="Topic (e.g. Real-Time Vector Data Pipelines in Python 3.12)"
                     value={aiTopic}
                     onChange={(e) => setAiTopic(e.target.value)}
-                    className="md:col-span-2 px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:border-blue-500 focus:outline-none"
+                    className="md:col-span-2 px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:border-blue-500 focus:outline-none"
                   />
                   <button
                     type="submit"
@@ -760,10 +612,10 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                 </form>
 
                 {aiResult && (
-                  <div className="p-5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs space-y-3">
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">{aiResult.title}</h4>
-                    <p className="text-slate-500 dark:text-slate-400 italic">{aiResult.summary}</p>
-                    <div className="text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
+                  <div className="p-5 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-3">
+                    <h4 className="text-sm font-bold text-white">{aiResult.title}</h4>
+                    <p className="text-slate-400 italic">{aiResult.summary}</p>
+                    <div className="text-slate-300 whitespace-pre-wrap leading-relaxed">
                       {aiResult.content}
                     </div>
                   </div>

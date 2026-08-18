@@ -1,7 +1,6 @@
 export type NavigationTab = 
   | 'home'
   | 'about'
-  | 'team'
   | 'services'
   | 'products'
   | 'blogs'
@@ -105,15 +104,20 @@ export interface GalleryItem {
 export interface CaseStudy {
   id: string;
   title: string;
-  clientName: string;
+  clientName?: string;
+  client?: string;
   industry: string;
   summary: string;
-  metrics: { label: string; value: string; trend: string }[];
-  challenge: string;
-  solution: string;
-  technologies: string[];
-  imageUrl: string;
+  metrics?: { label: string; value: string; trend?: string }[];
+  challenge?: string;
+  solution?: string;
+  technologies?: string[];
+  imageUrl?: string;
+  image?: string;
+  featured?: boolean;
 }
+
+export type CaseStudyItem = CaseStudy;
 
 export interface InquiryLead {
   id: string;
@@ -263,6 +267,50 @@ export interface StickyNote {
   createdAt: string;
 }
 
+export interface TeamMember {
+  id: string;
+  name: string;
+  role: string;
+  bio: string;
+  avatar: string;
+  badge?: string;
+}
+
+export interface MilestoneItem {
+  id: string;
+  year: string;
+  title: string;
+  desc: string;
+}
+
+export interface TestimonialItem {
+  id: string;
+  quote: string;
+  author: string;
+  role: string;
+  company: string;
+  avatar?: string;
+  rating: number;
+}
+
+export interface HomePageContent {
+  heroHeadline: string;
+  heroSubtitle: string;
+  heroBadge: string;
+  stats: { label: string; value: string; desc: string }[];
+  testimonials: TestimonialItem[];
+}
+
+export interface AboutPageContent {
+  headline: string;
+  subtitle: string;
+  mission: string;
+  vision: string;
+  values: { title: string; desc: string; icon: string }[];
+  teamMembers: TeamMember[];
+  milestones: MilestoneItem[];
+}
+
 export interface SiteSettings {
   companyName: string;
   legalEntity: string;
@@ -291,4 +339,6 @@ export interface SiteSettings {
     mysqlConfigured: boolean;
     vercelReady: boolean;
   };
+  homeContent?: HomePageContent;
+  aboutContent?: AboutPageContent;
 }

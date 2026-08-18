@@ -10,6 +10,7 @@ import {
   Loader2,
   RefreshCw
 } from 'lucide-react';
+import { apiFetch } from '../../../lib/apiClient';
 
 export const AdminDatabaseTab: React.FC = () => {
   const [copiedSql, setCopiedSql] = useState(false);
@@ -19,12 +20,12 @@ export const AdminDatabaseTab: React.FC = () => {
   const [health, setHealth] = useState<any>(null);
 
   useEffect(() => {
-    fetch('/api/export-db/mysql')
+    apiFetch('/api/export-db/mysql')
       .then((res) => res.text())
       .then(setSql)
       .catch(() => setSql('-- Failed to load schema from /api/export-db/mysql'));
 
-    fetch('/api/health')
+    apiFetch('/api/health')
       .then((res) => res.json())
       .then(setHealth)
       .catch(() => {});
@@ -49,7 +50,7 @@ export const AdminDatabaseTab: React.FC = () => {
     setTestingConnection(true);
     setConnectionResult(null);
     try {
-      const res = await fetch('/api/db/test-connection', { method: 'POST' });
+      const res = await apiFetch('/api/db/test-connection', { method: 'POST' });
       const data = await res.json();
       setConnectionResult(data);
     } catch (err) {

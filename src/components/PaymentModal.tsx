@@ -14,6 +14,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { InvoiceItem } from '../types';
+import { apiFetch } from '../lib/apiClient';
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -63,7 +64,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
     try {
       if (invoice) {
-        const res = await fetch('/api/payments/settle', {
+        const res = await apiFetch('/api/payments/settle', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

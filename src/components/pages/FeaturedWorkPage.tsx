@@ -14,13 +14,11 @@ import {
 interface FeaturedWorkPageProps {
   caseStudies?: CaseStudy[];
   setActiveTab: (tab: NavigationTab) => void;
-  onOpenEstimator?: () => void;
 }
 
 export const FeaturedWorkPage: React.FC<FeaturedWorkPageProps> = ({
   caseStudies = [],
   setActiveTab,
-  onOpenEstimator,
 }) => {
   return (
     <div className="py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto space-y-16">
@@ -59,11 +57,11 @@ export const FeaturedWorkPage: React.FC<FeaturedWorkPageProps> = ({
               </div>
 
               <button
-                onClick={onOpenEstimator}
-                className="self-start sm:self-auto px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md flex items-center gap-1.5 cursor-pointer"
+                onClick={() => setActiveTab('contact')}
+                className="self-start sm:self-auto px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md flex items-center gap-1.5 cursor-pointer transition-all"
               >
-                <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
                 <span>Build Similar Architecture</span>
+                <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
 

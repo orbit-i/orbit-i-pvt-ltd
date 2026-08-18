@@ -15,6 +15,7 @@ import {
   Calendar
 } from 'lucide-react';
 import { ProjectTracking } from '../../../types';
+import { apiFetch } from '../../../lib/apiClient';
 
 interface AdminProjectsTabProps {
   projects: ProjectTracking[];
@@ -116,7 +117,7 @@ export const AdminProjectsTab: React.FC<AdminProjectsTabProps> = ({
     });
 
     try {
-      await fetch('/api/projects', {
+      await apiFetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newProj),
@@ -130,7 +131,7 @@ export const AdminProjectsTab: React.FC<AdminProjectsTabProps> = ({
     if (confirm('Are you sure you want to delete this project?')) {
       setProjects((prev) => prev.filter((p) => p.id !== id));
       try {
-        await fetch(`/api/projects/${id}`, { method: 'DELETE' });
+        await apiFetch(`/api/projects/${id}`, { method: 'DELETE' });
       } catch (err) {
         console.error(err);
       }

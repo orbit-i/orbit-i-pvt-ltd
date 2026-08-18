@@ -26,7 +26,6 @@ interface HomePageProps {
   services?: ServiceItem[];
   settings?: SiteSettings;
   setActiveTab: (tab: NavigationTab) => void;
-  onOpenEstimator?: () => void;
   onBuyProduct?: (product: any) => void;
   products?: any[];
   blogs?: any[];
@@ -59,6 +58,18 @@ export const HomePage: React.FC<HomePageProps> = ({
     }
   };
 
+  const homeData = settings?.homeContent;
+  const heroBadge = homeData?.heroBadge || 'Software & Technology Services';
+  const heroHeadline = homeData?.heroHeadline || 'Custom Software & Technology Solutions for Modern Businesses';
+  const heroSubtitle = homeData?.heroSubtitle || settings?.tagline || 'We design, engineer, and deploy high-performance software applications, web platforms, and tailored technical systems.';
+  const stats = homeData?.stats || [
+    { label: 'Enterprise Deployments', value: '150+', desc: 'Production systems worldwide' },
+    { label: 'System Uptime SLA', value: '99.99%', desc: 'High-availability infrastructure' },
+    { label: 'Client Value Generated', value: '$18M+', desc: 'Measurable client impact' },
+    { label: 'Average API Latency', value: '<25ms', desc: 'Edge accelerated routing' },
+  ];
+  const testimonials = homeData?.testimonials || [];
+
   return (
     <div className="relative text-slate-100 overflow-hidden">
       {/* ========================================================================= */}
@@ -75,19 +86,19 @@ export const HomePage: React.FC<HomePageProps> = ({
           {/* Company Badge */}
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900 border border-slate-700/80 text-xs font-semibold text-cyan-300">
             <span className="w-2 h-2 rounded-full bg-cyan-400" />
-            <span>Orbit-I Private Limited</span>
+            <span>{settings?.companyName || 'Orbit-I Private Limited'}</span>
             <span className="text-slate-500">•</span>
-            <span className="text-slate-300">Software & Technology Services</span>
+            <span className="text-slate-300">{heroBadge}</span>
           </div>
 
           {/* Main Title */}
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white leading-[1.15]">
-            Custom Software & Technology Solutions for Modern Businesses
+            {heroHeadline}
           </h1>
 
           {/* Subtitle */}
           <p className="text-base sm:text-lg text-slate-300 max-w-2xl mx-auto font-normal leading-relaxed">
-            {settings?.tagline || 'We design, engineer, and deploy high-performance software applications, web platforms, and tailored technical systems.'}
+            {heroSubtitle}
           </p>
 
           {/* Call to Actions */}
@@ -106,6 +117,17 @@ export const HomePage: React.FC<HomePageProps> = ({
             >
               <span>Contact Us</span>
             </button>
+          </div>
+
+          {/* Performance Stats Counters */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-8 border-t border-slate-800/80">
+            {stats.map((st, i) => (
+              <div key={i} className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 text-center">
+                <div className="text-xl sm:text-2xl font-extrabold text-cyan-300 font-mono">{st.value}</div>
+                <div className="text-xs font-semibold text-white mt-0.5">{st.label}</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">{st.desc}</div>
+              </div>
+            ))}
           </div>
         </div>
       </section>

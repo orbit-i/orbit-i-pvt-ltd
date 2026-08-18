@@ -18,6 +18,7 @@ import {
   ExternalLink,
   ChevronRight
 } from 'lucide-react';
+import { apiFetch } from '../../../lib/apiClient';
 
 interface AdminBlogsTabProps {
   blogs: BlogPost[];
@@ -137,7 +138,7 @@ export const AdminBlogsTab: React.FC<AdminBlogsTabProps> = ({ blogs, setBlogs })
     setEditingBlog(null);
 
     // Sync with backend
-    fetch('/api/content/blogs', {
+    apiFetch('/api/content/blogs', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updatedList),
@@ -148,7 +149,7 @@ export const AdminBlogsTab: React.FC<AdminBlogsTabProps> = ({ blogs, setBlogs })
     if (confirm('Are you sure you want to delete this blog post?')) {
       const updated = blogs.filter((b) => b.id !== id);
       setBlogs(updated);
-      fetch('/api/content/blogs', {
+      apiFetch('/api/content/blogs', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated),
@@ -161,7 +162,7 @@ export const AdminBlogsTab: React.FC<AdminBlogsTabProps> = ({ blogs, setBlogs })
     setAiGenerating(true);
 
     try {
-      const res = await fetch('/api/ai/generate-content', {
+      const res = await apiFetch('/api/ai/generate-content', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

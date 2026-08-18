@@ -13,6 +13,7 @@ import {
   Building
 } from 'lucide-react';
 import { InvoiceItem } from '../../../types';
+import { apiFetch } from '../../../lib/apiClient';
 
 interface AdminInvoicesTabProps {
   invoices: InvoiceItem[];
@@ -86,7 +87,7 @@ export const AdminInvoicesTab: React.FC<AdminInvoicesTabProps> = ({
     });
 
     try {
-      await fetch('/api/invoices', {
+      await apiFetch('/api/invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newInv),
@@ -109,7 +110,7 @@ export const AdminInvoicesTab: React.FC<AdminInvoicesTabProps> = ({
     if (confirm('Delete this invoice permanently?')) {
       setInvoices((prev) => prev.filter((i) => i.id !== id));
       try {
-        await fetch(`/api/invoices/${id}`, { method: 'DELETE' });
+        await apiFetch(`/api/invoices/${id}`, { method: 'DELETE' });
       } catch (err) {
         console.error(err);
       }

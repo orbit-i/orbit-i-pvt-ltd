@@ -12,13 +12,15 @@ import {
   Twitter,
   Instagram,
   Youtube,
-  Facebook,
-  MessageCircle,
   AlertCircle,
   Check,
   LayoutTemplate,
-  ShieldCheck
+  ShieldCheck,
+  Link2,
+  Copy,
+  EyeOff
 } from 'lucide-react';
+import { apiFetch } from '../../../lib/apiClient';
 
 interface AdminSettingsTabProps {
   settings: SiteSettings;
@@ -28,13 +30,23 @@ interface AdminSettingsTabProps {
 export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({ settings, setSettings }) => {
   const [formData, setFormData] = useState<SiteSettings>({ ...settings });
   const [saved, setSaved] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
+
+  const secretAdminUrl = typeof window !== 'undefined' ? `${window.location.origin}/#superadmin` : 'https://orbit-i.com/#superadmin';
+
+  const handleCopyUrl = () => {
+    navigator.clipboard.writeText(secretAdminUrl).then(() => {
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 3000);
+    });
+  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     setSettings(formData);
     setSaved(true);
 
-    fetch('/api/content/settings', {
+    apiFetch('/api/content/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(formData),
@@ -72,6 +84,55 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({ settings, se
           <span>Settings successfully updated and synchronized across all footer and navigation modules.</span>
         </div>
       )}
+
+      {/* Secret Access & Privacy Control */}
+      <div className="bg-slate-900 border border-cyan-500/30 rounded-2xl p-5 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+              <EyeOff className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-slate-100 flex items-center gap-2">
+                <span>Secret SuperAdmin Access URL</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-cyan-400 border border-slate-700">
+                  Shortcut: Ctrl+Shift+A
+                </span>
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                The public UI does not show any admin access buttons. Use your direct secret link to open this administration console.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleCopyUrl}
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              copiedUrl
+                ? 'bg-emerald-600 text-white'
+                : 'bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700'
+            }`}
+          >
+            {copiedUrl ? (
+              <>
+                <Check className="w-3.5 h-3.5" />
+                <span>Copied to Clipboard!</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Copy Secret URL</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800">
+          <Link2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+          <code className="text-xs text-cyan-300 font-mono select-all truncate">{secretAdminUrl}</code>
+        </div>
+      </div>
 
       {/* 1. Core Corporate Identity & Footer Text */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs space-y-4">
@@ -272,42 +333,6 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({ settings, se
                 setFormData({
                   ...formData,
                   socials: { ...formData.socials, youtube: e.target.value },
-                })
-              }
-              className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1.5">
-              <Facebook className="w-3.5 h-3.5 text-blue-600" />
-              <span>Facebook URL</span>
-            </label>
-            <input
-              type="text"
-              value={formData.socials.facebook}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  socials: { ...formData.socials, facebook: e.target.value },
-                })
-              }
-              className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1.5">
-              <MessageCircle className="w-3.5 h-3.5 text-emerald-500" />
-              <span>WhatsApp Channel URL</span>
-            </label>
-            <input
-              type="text"
-              value={formData.socials.whatsapp}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  socials: { ...formData.socials, whatsapp: e.target.value },
                 })
               }
               className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-blue-500"

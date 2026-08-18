@@ -26,6 +26,7 @@ import {
   InquiryLead,
   SiteSettings
 } from '../../../types';
+import { apiFetch } from '../../../lib/apiClient';
 
 interface AdminDataTabProps {
   services: ServiceItem[];
@@ -77,7 +78,7 @@ export const AdminDataTab: React.FC<AdminDataTabProps> = ({
   const handleExportFullJson = async () => {
     setExporting(true);
     try {
-      const res = await fetch('/api/data/export-all');
+      const res = await apiFetch('/api/data/export-all');
       const data = await res.json();
 
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -167,7 +168,7 @@ export const AdminDataTab: React.FC<AdminDataTabProps> = ({
     reader.onload = async (event) => {
       try {
         const json = JSON.parse(event.target?.result as string);
-        const res = await fetch('/api/data/import-all', {
+        const res = await apiFetch('/api/data/import-all', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ data: json.data || json }),
@@ -201,7 +202,7 @@ export const AdminDataTab: React.FC<AdminDataTabProps> = ({
   // 4. Reset to Factory Seeds
   const handleFactoryReset = async () => {
     try {
-      const res = await fetch('/api/data/reset-seeds', { method: 'POST' });
+      const res = await apiFetch('/api/data/reset-seeds', { method: 'POST' });
       const data = await res.json();
 
       if (data.success && data.data) {

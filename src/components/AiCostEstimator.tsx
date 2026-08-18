@@ -11,6 +11,7 @@ import {
   Send,
   Loader2
 } from 'lucide-react';
+import { apiFetch } from '../lib/apiClient';
 
 interface AiCostEstimatorProps {
   isOpen: boolean;
@@ -47,7 +48,7 @@ export const AiCostEstimator: React.FC<AiCostEstimatorProps> = ({
 
     setLoading(true);
     try {
-      const res = await fetch('/api/ai/estimate-project', {
+      const res = await apiFetch('/api/ai/estimate-project', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -81,7 +82,7 @@ export const AiCostEstimator: React.FC<AiCostEstimatorProps> = ({
         source: 'AI Cost Estimator Tool',
       };
 
-      const res = await fetch('/api/leads', {
+      const res = await apiFetch('/api/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -139,7 +140,7 @@ export const AiCostEstimator: React.FC<AiCostEstimatorProps> = ({
                   <option>Brand Identity, Graphics & 3D UI/UX</option>
                   <option>Custom SaaS & Digital Product Engineering</option>
                   <option>High-ROI Digital Marketing & Growth SEO</option>
-                  <option>Cloud Infrastructure & Database Engineering (MySQL/Hostinger/Supabase)</option>
+                  <option>Cloud Infrastructure & Database Engineering (MySQL)</option>
                 </select>
               </div>
 

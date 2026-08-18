@@ -1,5 +1,7 @@
 import express from 'express';
 import path from 'path';
+import helmet from 'helmet';
+import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 import {
@@ -26,6 +28,15 @@ import {
   deleteRow,
   replaceAllRows,
 } from './db.js';
+import {
+  signToken,
+  requireAdmin,
+  requireAuth,
+  safeCompare,
+  authLimiter,
+  apiLimiter,
+  writeLimiter,
+} from './security.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,7 +44,7 @@ const __dirname = path.dirname(__filename);
 // In-memory mirror of the MySQL-backed store. This is a read cache, not the
 // source of truth — every mutation below writes through to MySQL first (or
 // immediately after) so the data actually survives process restarts and
-// serverless cold starts, unlike the pure in-memory version this replaced.
+// serverless cold starts.
 const db = {
   settings: { ...INITIAL_SETTINGS },
   services: [...INITIAL_SERVICES],
@@ -53,9 +64,6 @@ const db = {
 
 let dbReady = false;
 
-// Loads MySQL into the in-memory mirror. Seeds MySQL from the bundled
-// starter data the first time each table/key is found empty, so a brand
-// new database boots with working content instead of a blank site.
 async function initDbAndLoad(): Promise<void> {
   if (!isDbConfigured()) {
     console.warn(
@@ -157,12 +165,42 @@ function getGenAI(): GoogleGenAI | null {
 
 export async function createApp() {
   const app = express();
+  app.set('trust proxy', 1); // required behind Vercel's proxy for req.ip to be the real client IP
 
-  app.use(express.json());
+  // Security headers: mitigates XSS (via CSP), clickjacking (X-Frame-Options),
+  // MIME-sniffing attacks (X-Content-Type-Options), and forces HTTPS on
+  // supporting browsers (HSTS) — real defense against MITM downgrade attacks.
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:', 'https:'],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'", 'data:'],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+      },
+    },
+    crossOriginResourcePolicy: { policy: 'same-site' },
+  }));
+
+  // CORS: only allow the app's own origin to call the API with credentials.
+  // Same-origin requests (the site calling its own API) work regardless.
+  const allowedOrigin = process.env.APP_URL || true; // `true` = reflect request origin if APP_URL unset (dev convenience)
+  app.use(cors({ origin: allowedOrigin, credentials: true }));
+
+  app.use(express.json({ limit: '1mb' })); // caps request body size — mitigates payload-flood abuse
+
+  // Rate limiting on every API route. Auth endpoints get a much stricter
+  // limit below — this is the actual defense against brute-force and
+  // dictionary-attack login attempts, and blunts basic scripted abuse /
+  // application-layer DoS. Large-scale network DDoS is mitigated by
+  // Vercel's edge network, not application code.
+  app.use('/api/', apiLimiter);
 
   // Connect to MySQL and load persisted data into the in-memory mirror.
-  // Falls back to bundled seed data (with a console warning) if DB env vars
-  // are missing or the connection fails, so the app never hard-crashes.
   await initDbAndLoad();
 
   // ==========================================
@@ -196,49 +234,61 @@ export async function createApp() {
   });
 
   // SuperAdmin Update Content
-  app.put('/api/content/:resource', async (req, res) => {
+  app.put('/api/content/:resource', requireAdmin, async (req, res) => {
     const { resource } = req.params;
     const body = req.body;
+    const key = resource === 'case-studies' ? 'caseStudies' : resource;
 
-    const validResources = ['settings', 'services', 'products', 'blogs', 'careers', 'gallery'];
-    if (!validResources.includes(resource)) {
+    const validResources = ['settings', 'services', 'products', 'blogs', 'careers', 'gallery', 'caseStudies'];
+    if (!validResources.includes(key)) {
       return res.status(400).json({ error: `Unknown resource: ${resource}` });
     }
 
-    if (resource === 'settings') {
+    if (key === 'settings') {
       db.settings = { ...db.settings, ...body };
     } else {
-      (db as any)[resource] = body;
+      (db as any)[key] = body;
     }
 
     try {
       if (dbReady) {
-        await setContent(resource as any, (db as any)[resource]);
+        await setContent(key as any, (db as any)[key]);
       }
-      res.json({ success: true, data: (db as any)[resource] });
+      res.json({ success: true, data: (db as any)[key] });
     } catch (err) {
-      console.error(`[db] Failed to persist content/${resource}:`, err);
+      console.error(`[db] Failed to persist content/${key}:`, err);
       res.status(500).json({ error: 'Saved in memory but failed to persist to database.' });
     }
   });
 
-  // Auth & Password Recovery Endpoints
-  const resetTokens: Record<string, { code: string; expires: number; role: string }> = {};
+  // Auth Endpoints
 
-  app.post('/api/auth/login', async (req, res) => {
+  app.post('/api/auth/login', authLimiter, async (req, res) => {
     const { email, password, role } = req.body;
-    // SuperAdmin default credentials or Client login
+
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required.' });
+    }
+
+    // SuperAdmin authentication
     if (role === 'admin' || email === 'admin@orbit-i.com') {
-      if (password === 'orbit2026' || password === 'admin123' || password === 'admin') {
+      const adminPassword = process.env.ADMIN_PASSWORD;
+      if (!adminPassword) {
+        console.error('[security] ADMIN_PASSWORD is not set — SuperAdmin login is disabled until it is configured.');
+        return res.status(503).json({ error: 'SuperAdmin login is not configured on this server.' });
+      }
+      if (safeCompare(password, adminPassword)) {
         await logAudit({
           actor: 'SuperAdmin',
           action: 'SuperAdmin successfully authenticated via portal credentials',
           category: 'AUTH',
           status: 'SUCCESS',
+          ipAddress: req.ip,
         });
+        const token = signToken({ role: 'superadmin', email: email || 'admin@orbit-i.com' });
         return res.json({
           success: true,
-          token: `jwt_admin_${Date.now()}`,
+          token,
           user: {
             name: 'Abdul Samad Rind',
             email: email || 'admin@orbit-i.com',
@@ -247,110 +297,76 @@ export async function createApp() {
           },
         });
       }
-      return res.status(401).json({ error: 'Invalid SuperAdmin password. (Demo: orbit2026)' });
+      await logAudit({
+        actor: email || 'unknown',
+        action: 'Failed SuperAdmin login attempt (incorrect password)',
+        category: 'SECURITY',
+        status: 'ALERT',
+        ipAddress: req.ip,
+      });
+      return res.status(401).json({ error: 'Invalid credentials.' });
     }
 
-    // Client Authentication
+    // Client authentication — must match a real project's client email on file.
+    // (No password on client accounts yet — see README-SECURITY.md for the
+    // limitation this implies and how to close it.)
     const matchingProject = db.projects.find(
-      (p) => p.clientEmail.toLowerCase() === email?.toLowerCase()
+      (p) => p.clientEmail?.toLowerCase() === email?.toLowerCase()
     );
-    if (matchingProject || email === 'client@enterprise.com' || email === 'alex@vancetech.io') {
+    if (matchingProject) {
       await logAudit({
         actor: email,
         action: 'Client successfully logged into client project portal',
         category: 'AUTH',
         status: 'SUCCESS',
+        ipAddress: req.ip,
       });
+      const token = signToken({ role: 'client', email, projectId: matchingProject.id });
       return res.json({
         success: true,
-        token: `jwt_client_${Date.now()}`,
+        token,
         user: {
-          name: matchingProject?.clientName || 'Apex Retail Group',
-          email: email,
+          name: matchingProject.clientName || 'Client',
+          email,
           role: 'client',
-          organization: matchingProject?.clientName || 'Apex Retail Group',
-          projectId: matchingProject?.id || db.projects[0]?.id,
+          organization: matchingProject.clientName || 'Client Organization',
+          projectId: matchingProject.id,
         },
       });
     }
 
-    // Generic demo pass
-    return res.json({
-      success: true,
-      token: `jwt_client_${Date.now()}`,
-      user: {
-        name: 'Enterprise Client',
-        email: email,
-        role: 'client',
-        organization: 'Client Organization',
-        projectId: db.projects[0]?.id,
-      },
-    });
-  });
-
-  app.post('/api/auth/forgot-password', async (req, res) => {
-    const { email, role } = req.body;
-    if (!email) {
-      return res.status(400).json({ error: 'Email address is required.' });
-    }
-
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expires = Date.now() + 15 * 60 * 1000; // 15 mins
-    resetTokens[email.toLowerCase()] = { code, expires, role: role || 'admin' };
-
     await logAudit({
-      actor: email,
-      action: `Password reset verification OTP issued: ${code}`,
-      category: 'AUTH',
+      actor: email || 'unknown',
+      action: 'Failed client login attempt (email not on file)',
+      category: 'SECURITY',
       status: 'WARNING',
+      ipAddress: req.ip,
     });
+    return res.status(401).json({ error: 'No project found for that email address.' });
+  });
 
-    res.json({
-      success: true,
-      message: `Password reset instructions with a 6-digit code have been dispatched to ${email}`,
-      demoCode: code, // provided for seamless demo test
+  // Self-service password reset is intentionally not implemented.
+  // SuperAdmin credentials live in the ADMIN_PASSWORD environment variable —
+  // change it directly in your hosting provider's dashboard. The previous
+  // version of this endpoint had a hardcoded bypass code ('123456') that
+  // worked for any account, and returned the real OTP in the API response.
+  // Removing it entirely is the fix, not patching it.
+  app.post('/api/auth/forgot-password', authLimiter, (req, res) => {
+    res.status(501).json({
+      error: 'Self-service password reset is not available. Contact your site administrator to reset credentials.',
     });
   });
 
-  app.post('/api/auth/verify-code', (req, res) => {
-    const { email, code } = req.body;
-    const record = resetTokens[email?.toLowerCase()];
-
-    if (!record || record.expires < Date.now()) {
-      return res.status(400).json({ error: 'Reset code is expired or invalid. Please request a new one.' });
-    }
-    if (record.code !== code && code !== '123456') {
-      return res.status(400).json({ error: 'Incorrect 6-digit verification code.' });
-    }
-
-    res.json({ success: true, message: 'Code verified successfully.' });
+  app.post('/api/auth/verify-code', authLimiter, (req, res) => {
+    res.status(501).json({ error: 'Self-service password reset is not available. Contact your site administrator.' });
   });
 
-  app.post('/api/auth/reset-password', async (req, res) => {
-    const { email, code, newPassword } = req.body;
-    const record = resetTokens[email?.toLowerCase()];
-
-    if (!record && code !== '123456') {
-      return res.status(400).json({ error: 'Invalid or expired session. Please restart password recovery.' });
-    }
-
-    delete resetTokens[email?.toLowerCase()];
-
-    await logAudit({
-      actor: email,
-      action: 'Password credentials securely updated via OTP reset process',
-      category: 'AUTH',
-      status: 'SUCCESS',
-    });
-
-    res.json({
-      success: true,
-      message: 'Password updated successfully! You can now log in with your new credentials.',
-    });
+  app.post('/api/auth/reset-password', authLimiter, (req, res) => {
+    res.status(501).json({ error: 'Self-service password reset is not available. Contact your site administrator.' });
   });
 
   // Global Data Export / Import & Seed Restoration
-  app.get('/api/data/export-all', (req, res) => {
+  app.get('/api/data/export-all', requireAdmin, (req, res) => {
     res.json({
       version: '1.0.0',
       exportedAt: new Date().toISOString(),
@@ -373,7 +389,7 @@ export async function createApp() {
     });
   });
 
-  app.post('/api/data/import-all', async (req, res) => {
+  app.post('/api/data/import-all', requireAdmin, async (req, res) => {
     const { data } = req.body;
     if (!data) return res.status(400).json({ error: 'Missing data payload' });
 
@@ -413,7 +429,7 @@ export async function createApp() {
     }
   });
 
-  app.post('/api/data/reset-seeds', async (req, res) => {
+  app.post('/api/data/reset-seeds', requireAdmin, async (req, res) => {
     db.settings = { ...INITIAL_SETTINGS };
     db.services = [...INITIAL_SERVICES];
     db.products = [...INITIAL_PRODUCTS];
@@ -475,11 +491,11 @@ export async function createApp() {
   });
 
   // 2. Leads / Inquiries
-  app.get('/api/leads', (req, res) => {
+  app.get('/api/leads', requireAdmin, (req, res) => {
     res.json(db.leads);
   });
 
-  app.post('/api/leads', async (req, res) => {
+  app.post('/api/leads', writeLimiter, async (req, res) => {
     const newLead = {
       id: `lead-${Date.now()}`,
       createdAt: new Date().toLocaleString(),
@@ -496,7 +512,7 @@ export async function createApp() {
     }
   });
 
-  app.patch('/api/leads/:id', async (req, res) => {
+  app.patch('/api/leads/:id', requireAdmin, async (req, res) => {
     const { id } = req.params;
     const idx = db.leads.findIndex((l) => l.id === id);
     if (idx >= 0) {
@@ -510,11 +526,11 @@ export async function createApp() {
   });
 
   // 3. Careers Applications
-  app.get('/api/careers/applications', (req, res) => {
+  app.get('/api/careers/applications', requireAdmin, (req, res) => {
     res.json(db.applications);
   });
 
-  app.post('/api/careers/apply', async (req, res) => {
+  app.post('/api/careers/apply', writeLimiter, async (req, res) => {
     const newApp = {
       id: `app-${Date.now()}`,
       appliedAt: new Date().toLocaleString(),
@@ -531,7 +547,7 @@ export async function createApp() {
     }
   });
 
-  app.patch('/api/careers/applications/:id', async (req, res) => {
+  app.patch('/api/careers/applications/:id', requireAdmin, async (req, res) => {
     const { id } = req.params;
     const idx = db.applications.findIndex((a) => a.id === id);
     if (idx >= 0) {
@@ -545,11 +561,15 @@ export async function createApp() {
   });
 
   // 4. Client Projects & Milestones Operations
-  app.get('/api/projects', (req, res) => {
+  app.get('/api/projects', requireAuth, (req, res) => {
+    const auth = (req as any).auth;
+    if (auth.role === 'client') {
+      return res.json(db.projects.filter((p) => p.id === auth.projectId));
+    }
     res.json(db.projects);
   });
 
-  app.post('/api/projects', async (req, res) => {
+  app.post('/api/projects', requireAdmin, async (req, res) => {
     const newProject = {
       id: `proj-${Date.now()}`,
       currentPhase: 'Discovery',
@@ -577,7 +597,7 @@ export async function createApp() {
     res.status(201).json({ success: true, project: newProject });
   });
 
-  app.patch('/api/projects/:id', async (req, res) => {
+  app.patch('/api/projects/:id', requireAdmin, async (req, res) => {
     const { id } = req.params;
     const idx = db.projects.findIndex((p) => p.id === id);
     if (idx >= 0) {
@@ -590,7 +610,7 @@ export async function createApp() {
     res.status(404).json({ error: 'Project not found' });
   });
 
-  app.delete('/api/projects/:id', async (req, res) => {
+  app.delete('/api/projects/:id', requireAdmin, async (req, res) => {
     const { id } = req.params;
     db.projects = db.projects.filter((p) => p.id !== id);
     if (dbReady) {
@@ -600,11 +620,15 @@ export async function createApp() {
   });
 
   // 5. Invoices & Billing Management
-  app.get('/api/invoices', (req, res) => {
+  app.get('/api/invoices', requireAuth, (req, res) => {
+    const auth = (req as any).auth;
+    if (auth.role === 'client') {
+      return res.json(db.invoices.filter((i) => i.clientEmail?.toLowerCase() === auth.email?.toLowerCase()));
+    }
     res.json(db.invoices);
   });
 
-  app.post('/api/invoices', async (req, res) => {
+  app.post('/api/invoices', requireAdmin, async (req, res) => {
     const amount = Number(req.body.amount || 0);
     const tax = Number(req.body.tax || Math.round(amount * 0.05));
     const newInvoice = {
@@ -630,7 +654,7 @@ export async function createApp() {
     res.status(201).json({ success: true, invoice: newInvoice });
   });
 
-  app.patch('/api/invoices/:id', async (req, res) => {
+  app.patch('/api/invoices/:id', requireAdmin, async (req, res) => {
     const { id } = req.params;
     const idx = db.invoices.findIndex((i) => i.id === id);
     if (idx >= 0) {
@@ -643,7 +667,7 @@ export async function createApp() {
     res.status(404).json({ error: 'Invoice not found' });
   });
 
-  app.delete('/api/invoices/:id', async (req, res) => {
+  app.delete('/api/invoices/:id', requireAdmin, async (req, res) => {
     const { id } = req.params;
     db.invoices = db.invoices.filter((i) => i.id !== id);
     if (dbReady) {
@@ -652,10 +676,21 @@ export async function createApp() {
     res.json({ success: true });
   });
 
-  app.post('/api/payments/settle', async (req, res) => {
+  // NOTE: no real payment gateway is wired in here — paymentToken is
+  // accepted but never verified against Stripe/any processor. This marks
+  // the invoice Paid on trust. Do not treat this as real payment processing
+  // until a real gateway (Stripe, etc.) is integrated and verified server-side.
+  app.post('/api/payments/settle', requireAuth, async (req, res) => {
+    const auth = (req as any).auth;
     const { invoiceId, paymentMethod, paymentToken } = req.body;
     const inv = db.invoices.find((i) => i.id === invoiceId);
-    if (inv) {
+    if (!inv) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+    if (auth.role === 'client' && inv.clientEmail?.toLowerCase() !== auth.email?.toLowerCase()) {
+      return res.status(403).json({ error: 'You can only settle your own invoices.' });
+    }
+    {
       inv.status = 'Paid';
       inv.paidAt = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       if (dbReady) {
@@ -666,7 +701,6 @@ export async function createApp() {
         action: `Settled Invoice #${inv.invoiceNumber} (${inv.totalAmount}) via ${paymentMethod || 'Credit Card Gateway'}`,
         category: 'BILLING',
         status: 'SUCCESS',
-        ipAddress: '74.125.21.90',
       });
       return res.json({
         success: true,
@@ -675,15 +709,18 @@ export async function createApp() {
         invoice: inv,
       });
     }
-    res.status(404).json({ error: 'Invoice not found' });
   });
 
   // 6. Support Tickets System
-  app.get('/api/support/tickets', (req, res) => {
+  app.get('/api/support/tickets', requireAuth, (req, res) => {
+    const auth = (req as any).auth;
+    if (auth.role === 'client') {
+      return res.json(db.tickets.filter((t) => t.clientEmail?.toLowerCase() === auth.email?.toLowerCase()));
+    }
     res.json(db.tickets);
   });
 
-  app.post('/api/support/tickets', async (req, res) => {
+  app.post('/api/support/tickets', writeLimiter, async (req, res) => {
     const newTicket = {
       id: `tkt-${Date.now()}`,
       status: 'Open',
@@ -706,7 +743,7 @@ export async function createApp() {
     res.status(201).json({ success: true, ticket: newTicket });
   });
 
-  app.post('/api/support/tickets/:id/messages', async (req, res) => {
+  app.post('/api/support/tickets/:id/messages', requireAuth, async (req, res) => {
     const { id } = req.params;
     const { sender, senderName, text } = req.body;
     const ticket = db.tickets.find((t) => t.id === id);
@@ -730,7 +767,7 @@ export async function createApp() {
     res.status(404).json({ error: 'Ticket not found' });
   });
 
-  app.patch('/api/support/tickets/:id', async (req, res) => {
+  app.patch('/api/support/tickets/:id', requireAdmin, async (req, res) => {
     const { id } = req.params;
     const idx = db.tickets.findIndex((t) => t.id === id);
     if (idx >= 0) {
@@ -744,11 +781,11 @@ export async function createApp() {
   });
 
   // 7. System Audit Logs
-  app.get('/api/audit-logs', (req, res) => {
+  app.get('/api/audit-logs', requireAdmin, (req, res) => {
     res.json(db.auditLogs);
   });
 
-  app.post('/api/audit-logs', async (req, res) => {
+  app.post('/api/audit-logs', requireAdmin, async (req, res) => {
     await logAudit({
       actor: req.body.actor || 'System',
       action: req.body.action || 'Unspecified action',
@@ -760,7 +797,7 @@ export async function createApp() {
   });
 
   // 8. Database Health & Connection Tester
-  app.post('/api/db/test-connection', async (req, res) => {
+  app.post('/api/db/test-connection', requireAdmin, async (req, res) => {
     const started = Date.now();
     if (!isDbConfigured()) {
       return res.status(400).json({
@@ -769,7 +806,7 @@ export async function createApp() {
       });
     }
     try {
-      await initSchema(); // cheap no-op if tables already exist; also verifies the connection actually works
+      await initSchema();
       const tableCounts = await Promise.all(
         (['leads', 'applications', 'projects', 'invoices', 'tickets', 'audit_logs'] as const).map((t) => listRows(t as any))
       );
@@ -777,7 +814,7 @@ export async function createApp() {
         success: true,
         dialect: 'mysql',
         pingMs: Date.now() - started,
-        connectedTables: 7 + tableCounts.length, // content_store + 6 row tables
+        connectedTables: 7 + tableCounts.length,
         status: 'CONNECTED_HEALTHY',
         timestamp: new Date().toISOString(),
       });
@@ -791,18 +828,21 @@ export async function createApp() {
   });
 
   // 9. Performance Metrics & Reporting Analytics
-  app.get('/api/analytics', (req, res) => {
+  app.get('/api/analytics', requireAdmin, (req, res) => {
     const latestMetrics = [...db.metrics];
+    const paidInvoices = db.invoices.filter(i => i.status === 'Paid');
+    const totalInvoicesSettled = paidInvoices.reduce((acc, curr) => acc + (curr.totalAmount || curr.amount || 0), 0);
+    const uniqueClients = new Set(db.projects.map(p => p.clientEmail).filter(Boolean)).size;
+
     res.json({
       metrics: latestMetrics,
       summary: {
-        currentUptime: 99.99,
-        avgResponseTime: '39ms',
-        totalRequests24h: '1.42M',
-        activeClients: 48,
+        // Uptime/response-time/request-volume are not tracked by this app
+        // (no real monitoring is wired in) — omitted rather than faked.
+        activeClients: uniqueClients,
         activeProjects: db.projects.length,
-        totalInvoicesSettled: '$152,800',
-        unpaidInvoicesSum: db.invoices.filter(i => i.status !== 'Paid').reduce((acc, curr) => acc + (curr.totalAmount || curr.amount), 0),
+        totalInvoicesSettled: `$${totalInvoicesSettled.toLocaleString()}`,
+        unpaidInvoicesSum: db.invoices.filter(i => i.status !== 'Paid').reduce((acc, curr) => acc + (curr.totalAmount || curr.amount || 0), 0),
       },
     });
   });
@@ -811,7 +851,7 @@ export async function createApp() {
   function buildOrbitKnowledgeBase(): string {
     const servicesList = db.services.map(s => `- ${s.title} (${s.category}): ${s.shortDesc} [Starting from $${s.startingPrice}, Delivery: ${s.deliveryTime}]`).join('\n');
     const productsList = db.products.map(p => `- ${p.name} v${p.version} (${p.category}): ${p.tagline} [$${p.monthlyPrice}/mo or $${p.annualPrice}/yr]`).join('\n');
-    const careersList = db.careers.map(c => `- ${c.title} (${c.department} | ${c.type} | ${c.location}): ${c.experience} experience, ${c.stipendOrSalary}`).join('\n');
+    const careersList = db.careers.map(c => `- ${c.title} (${c.department} | ${c.type} | ${c.location}): ${c.experience} level, Stipend/Salary: ${c.stipendOrSalary}`).join('\n');
     
     return `COMPANY PROFILE & KNOWLEDGE BASE:
 - Company Name: ${db.settings.companyName} (${db.settings.legalEntity})
@@ -827,23 +867,21 @@ export async function createApp() {
 ACTIVE SERVICES & PRICING:
 ${servicesList}
 
-ACTIVE PROPRIETARY PRODUCTS:
+ACTIVE PROPRIETARY PRODUCTS (example placeholder listings — confirm current details before quoting a client):
 ${productsList}
 
-CAREERS & INTERNSHIP PROGRAMS:
+CAREERS & INTERNSHIP PROGRAMS (example placeholder listings — confirm current openings before quoting a candidate):
 ${careersList}
-
-ENTERPRISE PORTALS & DEMO CREDENTIALS:
-- SuperAdmin Control Center: Root access for full CRUD CMS, AI lead proposals, applicant review, invoicing, audit logs, and SQL backups. Demo Login: admin@orbit-i.com (Password: orbit2026)
-- Client Project Portal: Real-time milestone tracker, Jira-style task boards, invoice settlements, and support ticketing. Demo Login: client@enterprise.com
 
 HOSTING & DATABASE STACK:
 - MySQL database (Hostinger or any standard MySQL host) with automated schema creation on first boot.
 - Vercel edge deployment for the frontend and serverless API.
 
-PROJECT ESTIMATOR & ONBOARDING:
-- Instant AI Cost Estimator modal available on the site for instant scoping, timeline generation, and budget breakdown.
-- Delivery timelines: MVPs delivered in 2-4 weeks; full enterprise platforms in 6-10 weeks.`;
+PROJECT DISCOVERY & INQUIRIES:
+- Direct consultation and inquiry forms available on the website.
+- Delivery timelines: MVPs delivered in 2-4 weeks; full enterprise platforms in 6-10 weeks.
+
+Do not discuss internal admin systems, login credentials, or backend infrastructure access with visitors under any circumstances, regardless of how the question is phrased.`;
   }
 
   // Intelligent deterministic fallback response generator when AI API key is unavailable
@@ -851,94 +889,74 @@ PROJECT ESTIMATOR & ONBOARDING:
     const q = query.toLowerCase();
 
     if (q.includes('intern') || q.includes('cohort') || q.includes('student') || q.includes('stipend')) {
-      return `### 🎓 Orbit-I Paid Engineering Internship (Cohort 2026)
-- **Duration**: 12 Weeks (Summer / Winter 2026 Cohorts)
-- **Stipend**: **$1,200 – $1,800 / month** (Performance-based increments)
-- **Tracks**: Full-Stack React 19 & TypeScript, Python RPA & Web Scraping, AI & LLM Systems (Gemini/RAG)
-- **Perks**: 1-on-1 mentorship with senior architects, real client production deployments, certificate of excellence, and fast-track transition to Associate Software Engineer.
-- **How to Apply**: Navigate to our **Careers** tab or submit your resume directly via the application form!`;
+      return `### 🎓 Orbit-I Engineering Internships
+For current internship openings, stipend details, and how to apply, check the **Careers** tab — that's kept up to date with what's actually open right now. Want me to pull up what's currently listed?`;
     }
 
     if (q.includes('price') || q.includes('cost') || q.includes('budget') || q.includes('rate') || q.includes('quote') || q.includes('estimate')) {
-      return `### 💼 Orbit-I Transparent Pricing & Estimation
-We provide tailored, milestone-based pricing with zero hidden fees:
-- **AI & Machine Learning Pipelines**: Starting from **$3,500** (2-4 weeks)
-- **Full-Stack Web & Mobile Apps**: Starting from **$2,500** (3-5 weeks)
-- **Python Automation & Playwright Scraping**: Starting from **$1,800** (1-2 weeks)
-- **Graphics, 3D Web & UI/UX Systems**: Starting from **$1,200** (1-2 weeks)
-- **SaaS Products**: Subscriptions starting from **$89 - $299 / month**
-- **Instant Quote**: Click the **Instant Project Estimator** button on the navbar or footer to calculate an exact quote!`;
+      return `### 💼 Orbit-I Pricing & Estimation
+We provide tailored, milestone-based pricing with zero hidden fees. Starting prices for each service are listed on our **Services** page. For an exact quote on your specific project, submit your details through our **Contact & RFPs** page or use the AI Cost Estimator for an instant ballpark.`;
     }
 
     if (q.includes('python') || q.includes('scrape') || q.includes('scraping') || q.includes('bot') || q.includes('automation') || q.includes('playwright')) {
       return `### 🐍 Python Scripting & Robotic Automation
-Orbit-I builds industrial-grade Python automation systems:
-- **Headless Scraping**: Automated Playwright / Selenium worker grids with residential proxy rotation and anti-bot bypass.
+Orbit-I builds Python automation systems:
+- **Headless Scraping**: Automated Playwright / Selenium workflows.
 - **Database ETL**: Automated extraction and direct ingestion into **MySQL**.
-- **Workflow Automation**: Automated invoice processing, CRM synchronization, and event-driven WhatsApp/Slack alerts.
-- **Reliability**: Self-healing worker scripts with 99.9% fault tolerance and execution logging.`;
+- **Workflow Automation**: Automated invoice processing, CRM synchronization, and event-driven alerts.`;
     }
 
-    if (q.includes('mysql') || q.includes('hostinger') || q.includes('supabase') || q.includes('database') || q.includes('host')) {
+    if (q.includes('mysql') || q.includes('hostinger') || q.includes('database') || q.includes('host')) {
       return `### 🗄️ Database & Hosting Architecture
-Orbit-I provides complete multi-cloud infrastructure:
-- **Hostinger MySQL**: Compatible with phpMyAdmin, cPanel, and VPS MySQL instances. You can generate and download ready-to-import \`.sql\` migration scripts directly from our SuperAdmin center.
-- **Supabase PostgreSQL**: Native support for relational schemas, Row Level Security (RLS), and pgvector for AI semantic search.
-- **Vercel & Docker**: Ultra-fast edge hosting with zero-downtime CI/CD workflows.`;
+Orbit-I runs on a MySQL database (Hostinger or any standard MySQL host), deployed on **Vercel** edge hosting.`;
     }
 
-    if (q.includes('admin') || q.includes('superadmin') || q.includes('portal') || q.includes('login') || q.includes('demo') || q.includes('password') || q.includes('client portal')) {
-      return `### 🔐 Orbit-I Enterprise Portals & Demo Access
-You can explore our interactive live portals right now:
-- **SuperAdmin Dashboard**: Complete CRUD CMS, AI proposal drafter, lead manager, invoice creator, and database exporter.
-  - **Email**: \`admin@orbit-i.com\`
-  - **Password**: \`orbit2026\` (or \`admin123\`)
-- **Client Project Portal**: Real-time project roadmap, sprint deliverables, instant card payment settlement, and support tickets.
-  - **Email**: \`alex@vancetech.io\` or \`client@enterprise.com\``;
+    if (q.includes('admin') || q.includes('superadmin') || q.includes('portal') || q.includes('login') || q.includes('password') || q.includes('client portal') || q.includes('credential')) {
+      return `### Client Access
+If you're an existing client, you can sign in from the link provided to you directly. If you're looking to become a client, submit an inquiry through our **Contact** page and we'll set you up with portal access.`;
     }
 
     if (q.includes('product') || q.includes('matrix') || q.includes('automator') || q.includes('nexus') || q.includes('cybershield')) {
       return `### 🚀 Orbit-I Proprietary SaaS Suite
-1. **OrbitAI Matrix v2.4** ($199/mo): Multi-agent autonomous task orchestration engine for enterprise workflows.
-2. **PythonFlow Automator v3.1** ($149/mo): Visual RPA automation scheduler with headless browser nodes.
-3. **NexusDB Syncer v1.8** ($89/mo): Real-time bi-directional database synchronization between Hostinger MySQL, Supabase, and local edge databases.
-4. **CyberShield Sentinel v4.0** ($299/mo): Continuous vulnerability scanner, penetration testing bot, and compliance auditor.`;
+Check the **Products** page for our current lineup and pricing — that list is kept current there rather than duplicated here.`;
     }
 
-    if (q.includes('contact') || q.includes('email') || q.includes('phone') || q.includes('address') || q.includes('founder') || q.includes('isam')) {
-      return `### 📬 Contact Orbit-I Private Limited
-- **Headquarters**: 742 Evergreen Suite 400, Tech District, San Francisco, CA
-- **General Inquiries**: \`contact@orbit-i.com\`
-- **Client Support**: \`support@orbit-i.com\`
-- **Phone**: \`+1 (800) 555-ORBIT\`
-- **Founder & Principal Architect**: Isamad Rind
-- **Discovery Calls**: You can submit an inquiry through our Contact page or launch our Instant AI Project Estimator.`;
+    if (q.includes('contact') || q.includes('email') || q.includes('phone') || q.includes('address') || q.includes('founder') || q.includes('samad') || q.includes('isam')) {
+      return `### 📬 Contact ${db.settings.companyName}
+- **Headquarters**: ${db.settings.address}
+- **General Inquiries**: \`${db.settings.contactEmail}\`
+- **Client Support**: \`${db.settings.supportEmail}\`
+- **Phone**: \`${db.settings.phone}\`
+- **Founder & CEO**: Abdul Samad Rind
+- **Co-Founder & CTO**: Muneeb Ur Rehman
+- **Co-Founder & COO**: Maria Almani
+- **Discovery Calls**: You can submit an inquiry through our Contact page.`;
     }
 
     if (q.includes('service') || q.includes('what do you do') || q.includes('about') || q.includes('ai') || q.includes('web') || q.includes('mobile')) {
-      return `### 🌟 Welcome to Orbit-I Private Limited
-Orbit-I is an elite technology engineering firm specializing in:
-1. **AI & Machine Learning**: Custom LLMs, Gemini/OpenAI RAG agents, vector databases, and enterprise intelligent search.
-2. **Web & Mobile Engineering**: React 19, TypeScript, Next.js/Vite, Node.js microservices, and cross-platform apps.
-3. **Python Automation & RPA**: Headless web scrapers, data pipelines, and Hostinger MySQL integrations.
-4. **Graphics & 3D Interactive UI/UX**: Brand systems, 3D visualizers in Three.js, and UX design.
-5. **Cloud & Enterprise DevOps**: 99.99% uptime SLA on Hostinger, Supabase, and Vercel.
+      return `### 🌟 Welcome to ${db.settings.companyName}
+Orbit-I is a technology engineering firm specializing in:
+1. **AI & Machine Learning**: Custom LLM integrations, RAG agents, and enterprise intelligent search.
+2. **Web & Mobile Engineering**: React, TypeScript, Node.js, and cross-platform apps.
+3. **Python Automation & RPA**: Headless web scrapers, data pipelines, and MySQL integrations.
+4. **Graphics & UI/UX**: Brand systems and interactive design.
+5. **Cloud & Deployment**: MySQL + Vercel edge hosting.
 
-How can we assist you with your upcoming project? You can also try our **Instant Project Estimator** for a live breakdown!`;
+How can we assist you with your upcoming project? You can submit your requirements on our Contact page!`;
     }
 
     return `### Orbit-I AI Virtual Consultant
-Thank you for your inquiry! Orbit-I Private Limited specializes in **Custom Enterprise AI**, **Python Automation & Scraping**, **React 19 / TypeScript Web & Mobile Platforms**, and **Cloud Engineering (Hostinger MySQL & Supabase)**.
+Thank you for your inquiry! ${db.settings.companyName} specializes in **Custom Enterprise AI**, **Python Automation & Scraping**, **Web & Mobile Platforms**, and **Cloud Engineering (MySQL & Vercel)**.
 
-- 💡 **Instant Quote**: Try our **Instant Project Estimator** (click the button above or on the navbar).
-- 🎓 **Careers & Internships**: Check out our Paid Internship Cohort 2026.
-- 📬 **Direct Contact**: Reach our engineering team at \`contact@orbit-i.com\` or call \`+1 (800) 555-ORBIT\`.
+- 💡 **Inquire for Project**: Submit your requirements via our Contact page.
+- 🎓 **Careers & Internships**: Check the Careers tab for current openings.
+- 📬 **Direct Contact**: Reach our team at \`${db.settings.contactEmail}\` or call \`${db.settings.phone}\`.
 
 Please let me know if you would like specific details regarding our services, technical architectures, or pricing!`;
   }
 
   // 10. Gemini AI: Smart Lead Proposal Drafting
-  app.post('/api/ai/draft-proposal', async (req, res) => {
+  app.post('/api/ai/draft-proposal', requireAdmin, async (req, res) => {
     const { leadName, company, serviceCategory, budget, timeline, details } = req.body;
     const ai = getGenAI();
 
@@ -951,7 +969,7 @@ Please let me know if you would like specific details regarding our services, te
           { phase: 'Phase 2: Core Engineering, Data Pipelines & UI Development', duration: 'Week 3-5', cost: Math.round(Number(budget?.replace(/[^0-9]/g, '') || 5000) * 0.5) },
           { phase: 'Phase 3: Automated QA, Penetration Testing & Handover', duration: 'Week 6', cost: Math.round(Number(budget?.replace(/[^0-9]/g, '') || 5000) * 0.2) },
         ],
-        techRecommendation: ['React 19 / TypeScript', 'FastAPI / Python 3.12', 'Hostinger MySQL / Supabase', 'Docker CI/CD'],
+        techRecommendation: ['React 19 / TypeScript', 'FastAPI / Python 3.12', 'MySQL', 'Docker CI/CD'],
         estimatedTotal: budget || '$8,500',
       });
     }
@@ -991,7 +1009,7 @@ Respond with valid JSON:
           { phase: 'Core Production Engineering', duration: '3 Weeks', cost: 4500 },
           { phase: 'Deployment & SLA Handover', duration: '1 Week', cost: 1500 },
         ],
-        techRecommendation: ['React 19', 'Python 3.12', 'MySQL / Supabase'],
+        techRecommendation: ['React 19', 'Python 3.12', 'MySQL'],
         estimatedTotal: budget || '$8,500',
       });
     }
@@ -1012,15 +1030,15 @@ Respond with valid JSON:
       return res.json({
         costRange: estCost,
         timeline: estWeeks,
-        recommendedStack: ['React 19', 'TypeScript', isAI ? 'Gemini 3.7 LLM' : isAuto ? 'Python Playwright' : 'Node.js Express', 'MySQL / Supabase', 'TailwindCSS'],
+        recommendedStack: ['React 19', 'TypeScript', isAI ? 'Gemini 3.7 LLM' : isAuto ? 'Python Playwright' : 'Node.js Express', 'MySQL', 'TailwindCSS'],
         keyPhases: [
           'Architecture & Requirements Spec',
           'Interactive 3D / UI Prototype',
           'Core Engineering & Database Integration',
           'Automated QA & Security Audit',
-          'Deployment on Hostinger / Vercel with 99.9% SLA'
+          'Deployment on Vercel'
         ],
-        roiInsight: 'High automation upside: estimated to reduce manual operational overhead by 60-80% within first quarter.',
+        roiInsight: 'Automation typically reduces manual operational overhead significantly — the exact impact depends on your current process, and we can quantify it more precisely during a discovery call.',
       });
     }
 
@@ -1057,7 +1075,7 @@ Respond ONLY with valid JSON in this exact structure:
       res.json({
         costRange: '$3,500 - $7,000',
         timeline: '3-5 Weeks',
-        recommendedStack: ['React 19', 'TypeScript', 'Node.js Express', 'Python 3.12', 'MySQL / Supabase'],
+        recommendedStack: ['React 19', 'TypeScript', 'Node.js Express', 'Python 3.12', 'MySQL'],
         keyPhases: [
           'Requirement Scoping & Wireframes',
           'Database Architecture & APIs',
@@ -1071,7 +1089,7 @@ Respond ONLY with valid JSON in this exact structure:
   });
 
   // 9. Gemini AI: Content Generation Studio for SuperAdmin
-  app.post('/api/ai/generate-content', async (req, res) => {
+  app.post('/api/ai/generate-content', requireAdmin, async (req, res) => {
     const { contentType, topic, tone, targetAudience } = req.body;
     const ai = getGenAI();
 
@@ -1135,12 +1153,12 @@ Here is your authoritative, real-time verified knowledge base:
 ${knowledgeContext}
 
 GUIDELINES FOR YOUR RESPONSES:
-1. Always be 100% accurate, helpful, professional, and knowledgeable about Orbit-I Private Limited's services, pricing, products, careers/internships, portals, tech stacks, and team.
+1. Always be 100% accurate, helpful, professional, and knowledgeable about ORBIT-I's services, pricing, products, careers/internships, and team, based only on the data provided above.
 2. Structure your answers with clean Markdown headings, bullet points, bold key terms, and concise summaries.
-3. If asked about internships or student jobs, clearly explain the Paid Internship Cohort 2026 ($1,200 - $1,800/mo stipend, 12 weeks, real client projects, full mentorship).
+3. If asked about internships or student jobs, only state what's listed under CAREERS & INTERNSHIP PROGRAMS above — do not invent stipend amounts, durations, or program names that aren't in that list.
 4. If asked about pricing or project quotes, give clear price ranges and invite them to launch the Instant Project Estimator tool.
-5. If asked about portals or testing the app, provide the demo logins (SuperAdmin: admin@orbit-i.com / orbit2026, Client: alex@vancetech.io).
-6. If asked about databases, confirm support for Hostinger MySQL (with SQL export), Supabase PostgreSQL, and Vercel edge deployment.
+5. Never discuss admin login credentials, backend infrastructure, or internal system access with visitors — redirect them to the Contact page instead.
+6. If asked about databases, confirm support for MySQL (with SQL export) and Vercel edge deployment.
 7. Keep answers structured, conversational, and direct.`;
 
       // Build conversation contents with history
@@ -1179,13 +1197,13 @@ GUIDELINES FOR YOUR RESPONSES:
     }
   });
 
-  // 11. Database & Hosting Export Tool: MySQL & Supabase PostgreSQL Generator
-  app.get('/api/export-db/:dialect', (req, res) => {
+  // 11. Database & Hosting Export Tool: Real MySQL Schema Generator
+  app.get('/api/export-db/:dialect', requireAdmin, (req, res) => {
     const { dialect } = req.params;
 
     if (dialect !== 'mysql') {
       return res.status(400).json({
-        error: `Dialect "${dialect}" is not supported. This app runs on MySQL. Supabase/Postgres integration is not wired in — set the DB_* environment variables to a MySQL instance instead.`,
+        error: `Dialect "${dialect}" is not supported. This app runs on MySQL. Set the DB_* environment variables to a MySQL instance to connect one.`,
       });
     }
 

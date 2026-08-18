@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ShieldCheck,
   TrendingUp,
@@ -11,7 +11,12 @@ import {
   CheckCircle2,
   Clock,
   Sparkles,
-  Server
+  Server,
+  Link2,
+  Copy,
+  Check,
+  EyeOff,
+  KeyRound
 } from 'lucide-react';
 import {
   ProjectTracking,
@@ -45,6 +50,17 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({
   onOpenNewProject,
   onOpenNewInvoice,
 }) => {
+  const [copied, setCopied] = useState(false);
+
+  const secretUrl = typeof window !== 'undefined' ? `${window.location.origin}/#superadmin` : 'https://orbit-i.com/#superadmin';
+
+  const handleCopyUrl = () => {
+    navigator.clipboard.writeText(secretUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 3000);
+    });
+  };
+
   const totalRevenue = invoices
     .filter((i) => i.status === 'Paid')
     .reduce((acc, curr) => acc + (curr.totalAmount || curr.amount), 0);
@@ -70,7 +86,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                 SYSTEM OPERATIONAL
               </span>
-              <span className="text-xs text-slate-400">Hostinger & Supabase Synced</span>
+              <span className="text-xs text-slate-400">MySQL Database Synced</span>
             </div>
             <h1 className="text-2xl font-bold text-white tracking-tight">
               Executive Command & Operations
@@ -99,6 +115,47 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Secret Access & Privacy Control Notice */}
+      <div className="p-4 rounded-2xl bg-slate-900/90 border border-cyan-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+            <EyeOff className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="text-xs font-bold text-slate-200 flex items-center gap-2">
+              <span>Discreet SuperAdmin URL Access</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-slate-800 text-cyan-300 border border-slate-700">
+                Shortcut: Ctrl+Shift+A
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              All public admin buttons are hidden. Access is strictly via secret URL: <code className="text-cyan-300 font-mono">{secretUrl}</code>
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={handleCopyUrl}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+            copied
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700'
+          }`}
+        >
+          {copied ? (
+            <>
+              <Check className="w-3.5 h-3.5" />
+              <span>Copied!</span>
+            </>
+          ) : (
+            <>
+              <Copy className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Copy Secret URL</span>
+            </>
+          )}
+        </button>
       </div>
 
       {/* KPI Cards Grid */}

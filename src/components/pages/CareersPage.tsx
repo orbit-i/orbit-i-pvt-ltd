@@ -15,6 +15,7 @@ import {
   ArrowRight,
   Loader2
 } from 'lucide-react';
+import { apiFetch } from '../../lib/apiClient';
 
 interface CareersPageProps {
   careers?: CareerOpening[];
@@ -68,7 +69,7 @@ export const CareersPage: React.FC<CareersPageProps> = ({
         coverLetter,
       };
 
-      const res = await fetch('/api/careers/apply', {
+      const res = await apiFetch('/api/careers/apply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
