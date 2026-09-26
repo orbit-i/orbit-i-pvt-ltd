@@ -2,7 +2,6 @@ import express from 'express';
 import path from 'path';
 import helmet from 'helmet';
 import cors from 'cors';
-import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 import {
   INITIAL_SETTINGS,
@@ -38,8 +37,6 @@ import {
   writeLimiter,
 } from './security.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // In-memory mirror of the MySQL-backed store. This is a read cache, not the
 // source of truth — every mutation below writes through to MySQL first (or
