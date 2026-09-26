@@ -632,3 +632,4 @@ export const INITIAL_PROJECTS = INITIAL_CLIENT_PROJECTS;
 export const initialProjects = INITIAL_CLIENT_PROJECTS;
 export const initialInvoices = INITIAL_INVOICES;
 export const initialSettings = INITIAL_SETTINGS;
+export const initialPartners = INITIAL_PARTNERS;
