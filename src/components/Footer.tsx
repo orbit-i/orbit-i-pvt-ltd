@@ -47,7 +47,7 @@ export const Footer: React.FC<FooterProps> = ({
       message: '',
       type: 'info',
     },
-    socials: 
+    socials: {
       linkedin: 'https://www.linkedin.com/company/orbit-i-private-limited/',
       twitter: '',
       instagram: 'https://www.instagram.com/orbiti_private_limited?utm_source=qr&stkn=ZnE1c25zdG96Y3Zp',
