@@ -12,7 +12,8 @@ import {
   StickyNote,
   PerformanceMetricData,
   SupportTicket,
-  SystemAuditLog
+  SystemAuditLog,
+  PartnerItem
 } from '../types';
 
 export const INITIAL_SETTINGS: SiteSettings = {
@@ -253,7 +254,7 @@ export const INITIAL_PRODUCTS: ProductItem[] = [
     monthlyPrice: 49,
     annualPrice: 490,
     oneTimePrice: 999,
-    demoUrl: 'https://orbit-i.com',
+    demoUrl: 'https://orbit-i.tech',
     metrics: [
       { label: 'Architecture', value: 'Full-Stack' },
       { label: 'Database Sync', value: 'Real-Time' },
@@ -279,7 +280,7 @@ export const INITIAL_PRODUCTS: ProductItem[] = [
     monthlyPrice: 79,
     annualPrice: 790,
     oneTimePrice: 1499,
-    demoUrl: 'https://orbit-i.com',
+    demoUrl: 'https://orbit-i.tech',
     metrics: [
       { label: 'Execution Mode', value: 'Asynchronous' },
       { label: 'Reliability', value: '99.9%' },
@@ -305,7 +306,7 @@ export const INITIAL_PRODUCTS: ProductItem[] = [
     monthlyPrice: 39,
     annualPrice: 390,
     oneTimePrice: 699,
-    demoUrl: 'https://orbit-i.com',
+    demoUrl: 'https://orbit-i.tech',
     metrics: [
       { label: 'Framerate', value: '60 FPS' },
       { label: 'Bundle Size', value: '<40 KB' },
@@ -495,6 +496,28 @@ export const INITIAL_GALLERY: GalleryItem[] = [
   },
 ];
 
+export const INITIAL_PARTNERS: PartnerItem[] = [
+  {
+    id: 'partner-1',
+    name: 'Shaheed Benazir Bhutto University, Shaheed Benazirabad',
+    category: 'Academic Partner',
+    logoUrl: 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=400&auto=format&fit=crop&q=80',
+    websiteUrl: 'https://sbbusba.edu.pk',
+    description: 'Academic collaboration supporting student engineering talent and ORBIT-I\'s intern cohort pipeline.',
+    partnerSince: '2025',
+    featured: true,
+  },
+  {
+    id: 'partner-2',
+    name: 'Government Girls Degree College, Nawabshah',
+    category: 'Client Collaboration',
+    logoUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=400&auto=format&fit=crop&q=80',
+    description: 'Institutional client partnership — full website and admin CMS platform delivered and maintained by ORBIT-I.',
+    partnerSince: '2026',
+    featured: true,
+  },
+];
+
 export const INITIAL_CASE_STUDIES: CaseStudy[] = [
   {
     id: 'case-1',
@@ -555,8 +578,8 @@ export const INITIAL_CLIENT_PROJECTS: ClientProject[] = [
       { id: 'm-4', title: 'Quality Assurance & Production Deployment', description: 'Performance audit, security check, and deployment configuration.', status: 'Upcoming', dueDate: 'Milestone 4' },
     ],
     deliverables: [
-      { id: 'del-1', name: 'Software Architecture & API Specifications', category: 'API Docs', url: 'https://orbit-i.com', size: '2.4 MB', updatedAt: '2026-08' },
-      { id: 'del-2', name: 'Production Application Build & Source Code', category: 'Source Repo', url: 'https://orbit-i.com', size: '48 MB', updatedAt: '2026-08' },
+      { id: 'del-1', name: 'Software Architecture & API Specifications', category: 'API Docs', url: 'https://orbit-i.tech', size: '2.4 MB', updatedAt: '2026-08' },
+      { id: 'del-2', name: 'Production Application Build & Source Code', category: 'Source Repo', url: 'https://orbit-i.tech', size: '48 MB', updatedAt: '2026-08' },
     ],
     healthStatus: 'Optimal',
   },
@@ -627,9 +650,9 @@ export const initialProducts = INITIAL_PRODUCTS;
 export const initialBlogs = INITIAL_BLOGS;
 export const initialCareers = INITIAL_CAREERS;
 export const initialGallery = INITIAL_GALLERY;
+export const initialPartners = INITIAL_PARTNERS;
 export const initialCaseStudies = INITIAL_CASE_STUDIES;
 export const INITIAL_PROJECTS = INITIAL_CLIENT_PROJECTS;
 export const initialProjects = INITIAL_CLIENT_PROJECTS;
 export const initialInvoices = INITIAL_INVOICES;
 export const initialSettings = INITIAL_SETTINGS;
-

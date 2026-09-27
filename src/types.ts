@@ -7,6 +7,7 @@ export type NavigationTab =
   | 'careers'
   | 'gallery'
   | 'featured'
+  | 'partners'
   | 'contact'
   | 'admin'
   | 'client-portal';
@@ -98,6 +99,17 @@ export interface GalleryItem {
   imageUrl: string;
   aspectRatio?: string;
   tags: string[];
+  featured?: boolean;
+}
+
+export interface PartnerItem {
+  id: string;
+  name: string;
+  category: 'Technology Partner' | 'Client Collaboration' | 'Academic Partner' | 'Reseller' | 'Community Partner';
+  logoUrl: string;
+  websiteUrl?: string;
+  description: string;
+  partnerSince?: string;
   featured?: boolean;
 }
 

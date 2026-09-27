@@ -36,7 +36,8 @@ import {
   Copy,
   Check,
   Link2,
-  EyeOff
+  EyeOff,
+  Handshake
 } from 'lucide-react';
 import { apiFetch, setAuthToken } from '../../lib/apiClient';
 import {
@@ -45,6 +46,7 @@ import {
   BlogPost,
   CareerOpening,
   GalleryItem,
+  PartnerItem,
   CaseStudyItem,
   SiteSettings,
   InquiryLead,
@@ -76,6 +78,7 @@ import { AdminProductsTab } from './tabs/AdminProductsTab';
 import { AdminFeaturedWorkTab } from './tabs/AdminFeaturedWorkTab';
 import { AdminCareersTab } from './tabs/AdminCareersTab';
 import { AdminGalleryTab } from './tabs/AdminGalleryTab';
+import { AdminPartnersTab } from './tabs/AdminPartnersTab';
 import { AuthModal } from '../auth/AuthModal';
 
 interface SuperAdminDashboardProps {
@@ -89,6 +92,8 @@ interface SuperAdminDashboardProps {
   setCareers: React.Dispatch<React.SetStateAction<CareerOpening[]>>;
   gallery: GalleryItem[];
   setGallery: React.Dispatch<React.SetStateAction<GalleryItem[]>>;
+  partners?: PartnerItem[];
+  setPartners?: React.Dispatch<React.SetStateAction<PartnerItem[]>>;
   caseStudies?: CaseStudyItem[];
   setCaseStudies?: React.Dispatch<React.SetStateAction<CaseStudyItem[]>>;
   projects: ProjectTracking[];
@@ -111,6 +116,8 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   setCareers,
   gallery = [],
   setGallery,
+  partners = [],
+  setPartners = () => {},
   caseStudies = [],
   setCaseStudies = () => {},
   projects = [],
@@ -130,6 +137,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     | 'featured-work'
     | 'careers'
     | 'gallery'
+    | 'partners'
     | 'blogs'
     | 'projects'
     | 'invoices'
@@ -151,7 +159,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     if (typeof window !== 'undefined') {
       return `${window.location.origin}/#superadmin`;
     }
-    return 'https://orbit-i.com/#superadmin';
+    return 'https://orbit-i.tech/#superadmin';
   };
 
   const handleCopySecretUrl = () => {
@@ -251,6 +259,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
         { id: 'featured-work', label: 'Featured Case Studies', icon: FolderKanban, count: caseStudies.length },
         { id: 'careers', label: 'Careers & Cohorts', icon: GraduationCap, count: careers.length },
         { id: 'gallery', label: 'Gallery & Media', icon: Image, count: gallery.length },
+        { id: 'partners', label: 'Partners & Collabs', icon: Handshake, count: partners.length },
         { id: 'blogs', label: 'Blog Posts CMS', icon: BookOpen, count: blogs.length },
       ],
     },
@@ -521,6 +530,11 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
             {/* Gallery & Showcase Assets */}
             {adminTab === 'gallery' && (
               <AdminGalleryTab gallery={gallery} setGallery={setGallery} />
+            )}
+
+            {/* Partners & Collaborations */}
+            {adminTab === 'partners' && (
+              <AdminPartnersTab partners={partners} setPartners={setPartners} />
             )}
 
             {/* Client Projects & Milestones */}

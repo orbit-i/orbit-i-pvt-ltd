@@ -52,7 +52,7 @@ export const AdminOverviewTab: React.FC<AdminOverviewTabProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
 
-  const secretUrl = typeof window !== 'undefined' ? `${window.location.origin}/#superadmin` : 'https://orbit-i.com/#superadmin';
+  const secretUrl = typeof window !== 'undefined' ? `${window.location.origin}/#superadmin` : 'https://orbit-i.tech/#superadmin';
 
   const handleCopyUrl = () => {
     navigator.clipboard.writeText(secretUrl).then(() => {

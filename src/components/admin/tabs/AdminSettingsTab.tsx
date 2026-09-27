@@ -32,7 +32,7 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({ settings, se
   const [saved, setSaved] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
 
-  const secretAdminUrl = typeof window !== 'undefined' ? `${window.location.origin}/#superadmin` : 'https://orbit-i.com/#superadmin';
+  const secretAdminUrl = typeof window !== 'undefined' ? `${window.location.origin}/#superadmin` : 'https://orbit-i.tech/#superadmin';
 
   const handleCopyUrl = () => {
     navigator.clipboard.writeText(secretAdminUrl).then(() => {

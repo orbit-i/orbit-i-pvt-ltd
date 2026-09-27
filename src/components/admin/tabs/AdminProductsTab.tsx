@@ -114,7 +114,7 @@ export const AdminProductsTab: React.FC<AdminProductsTabProps> = ({
                 annualPrice: 470,
                 version: 'v1.0.0',
                 status: 'Live',
-                demoUrl: 'https://orbit-i.com',
+                demoUrl: 'https://orbit-i.tech',
                 features: ['Autonomous task processing', 'API key management', 'Enterprise SLA'],
                 metrics: { users: '1.2k+', rating: 4.9, queriesProcessed: '500k+' },
               });

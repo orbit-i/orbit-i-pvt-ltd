@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BlogPost, NavigationTab } from '../../types';
+import { blogPostPath, TAB_PATHS } from '../../lib/routes';
 import {
   Sparkles,
   Search,
@@ -16,12 +17,35 @@ import {
 interface BlogsPageProps {
   blogs?: BlogPost[];
   setActiveTab: (tab: NavigationTab) => void;
+  /** Slug from a /blog/:slug deep link, if the page was loaded directly on one. */
+  initialSlug?: string | null;
+  /** Called once the initial slug has been consumed (post opened or not found). */
+  onClearInitialSlug?: () => void;
 }
 
-export const BlogsPage: React.FC<BlogsPageProps> = ({ blogs = [], setActiveTab }) => {
+export const BlogsPage: React.FC<BlogsPageProps> = ({ blogs = [], setActiveTab, initialSlug, onClearInitialSlug }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [readingPost, setReadingPost] = useState<BlogPost | null>(null);
+
+  // Open the deep-linked post (orbit-i.tech/blog/<slug>) once posts are loaded.
+  useEffect(() => {
+    if (!initialSlug) return;
+    const match = blogs.find((b) => b.slug === initialSlug);
+    if (match) setReadingPost(match);
+    onClearInitialSlug?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSlug, blogs]);
+
+  const openPost = (post: BlogPost) => {
+    setReadingPost(post);
+    window.history.pushState({}, '', blogPostPath(post.slug));
+  };
+
+  const closePost = () => {
+    setReadingPost(null);
+    window.history.pushState({}, '', TAB_PATHS.blogs);
+  };
 
   const categories = ['All', 'AI & Data', 'Python & Scripting', 'Web Engineering', 'Design & UX', 'Marketing & Growth'];
 
@@ -130,7 +154,7 @@ export const BlogsPage: React.FC<BlogsPageProps> = ({ blogs = [], setActiveTab }
               </div>
 
               <button
-                onClick={() => setReadingPost(blog)}
+                onClick={() => openPost(blog)}
                 className="px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/30 text-xs font-semibold text-cyan-300 flex items-center gap-1 cursor-pointer"
               >
                 <span>Read Full</span>
@@ -148,7 +172,7 @@ export const BlogsPage: React.FC<BlogsPageProps> = ({ blogs = [], setActiveTab }
             <div className="px-6 py-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
               <span className="text-xs font-semibold text-cyan-400">{readingPost.category}</span>
               <button
-                onClick={() => setReadingPost(null)}
+                onClick={closePost}
                 className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
               >
                 <X className="w-5 h-5" />

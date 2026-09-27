@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import helmet from 'helmet';
@@ -10,6 +11,7 @@ import {
   INITIAL_BLOGS,
   INITIAL_CAREERS,
   INITIAL_GALLERY,
+  INITIAL_PARTNERS,
   INITIAL_CASE_STUDIES,
   INITIAL_CLIENT_PROJECTS,
   INITIAL_INVOICES,
@@ -49,6 +51,7 @@ const db = {
   blogs: [...INITIAL_BLOGS],
   careers: [...INITIAL_CAREERS],
   gallery: [...INITIAL_GALLERY],
+  partners: [...INITIAL_PARTNERS],
   caseStudies: [...INITIAL_CASE_STUDIES],
   leads: [] as any[],
   applications: [] as any[],
@@ -80,6 +83,7 @@ async function initDbAndLoad(): Promise<void> {
       blogs: INITIAL_BLOGS,
       careers: INITIAL_CAREERS,
       gallery: INITIAL_GALLERY,
+      partners: INITIAL_PARTNERS,
       caseStudies: INITIAL_CASE_STUDIES,
     };
     for (const key of Object.keys(contentDefaults) as Array<keyof typeof contentDefaults>) {
@@ -226,6 +230,7 @@ export async function createApp() {
       blogs: db.blogs,
       careers: db.careers,
       gallery: db.gallery,
+      partners: db.partners,
       caseStudies: db.caseStudies,
     });
   });
@@ -236,7 +241,7 @@ export async function createApp() {
     const body = req.body;
     const key = resource === 'case-studies' ? 'caseStudies' : resource;
 
-    const validResources = ['settings', 'services', 'products', 'blogs', 'careers', 'gallery', 'caseStudies'];
+    const validResources = ['settings', 'services', 'products', 'blogs', 'careers', 'gallery', 'partners', 'caseStudies'];
     if (!validResources.includes(key)) {
       return res.status(400).json({ error: `Unknown resource: ${resource}` });
     }
@@ -375,6 +380,7 @@ export async function createApp() {
         blogs: db.blogs,
         careers: db.careers,
         gallery: db.gallery,
+        partners: db.partners,
         caseStudies: db.caseStudies,
         leads: db.leads,
         applications: db.applications,
@@ -398,6 +404,7 @@ export async function createApp() {
       if (data.blogs) { db.blogs = data.blogs; contentUpdates.push(['blogs', db.blogs]); }
       if (data.careers) { db.careers = data.careers; contentUpdates.push(['careers', db.careers]); }
       if (data.gallery) { db.gallery = data.gallery; contentUpdates.push(['gallery', db.gallery]); }
+      if (data.partners) { db.partners = data.partners; contentUpdates.push(['partners', db.partners]); }
       if (data.caseStudies) { db.caseStudies = data.caseStudies; contentUpdates.push(['caseStudies', db.caseStudies]); }
 
       const rowUpdates: Array<[string, any[]]> = [];
@@ -433,6 +440,7 @@ export async function createApp() {
     db.blogs = [...INITIAL_BLOGS];
     db.careers = [...INITIAL_CAREERS];
     db.gallery = [...INITIAL_GALLERY];
+    db.partners = [...INITIAL_PARTNERS];
     db.caseStudies = [...INITIAL_CASE_STUDIES];
     db.projects = [...INITIAL_CLIENT_PROJECTS];
     db.invoices = [...INITIAL_INVOICES];
@@ -450,6 +458,7 @@ export async function createApp() {
         await setContent('blogs', db.blogs);
         await setContent('careers', db.careers);
         await setContent('gallery', db.gallery);
+        await setContent('partners', db.partners);
         await setContent('caseStudies', db.caseStudies);
         await replaceAllRows('projects', db.projects);
         await replaceAllRows('invoices', db.invoices);
@@ -479,6 +488,7 @@ export async function createApp() {
         blogs: db.blogs,
         careers: db.careers,
         gallery: db.gallery,
+        partners: db.partners,
         caseStudies: db.caseStudies,
         projects: db.projects,
         invoices: db.invoices,
@@ -1268,6 +1278,55 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     return res.send(sql);
   });
 
+  // ==========================================
+  // SEO: robots.txt + sitemap.xml
+  // ==========================================
+  app.get('/robots.txt', (req: any, res: any) => {
+    const siteUrl = (process.env.APP_URL || 'https://orbit-i.tech').replace(/\/+$/, '');
+    res.setHeader('Content-Type', 'text/plain');
+    res.send(
+      `User-agent: *\nAllow: /\n\nSitemap: ${siteUrl}/sitemap.xml\n`
+    );
+  });
+
+  app.get('/sitemap.xml', (req: any, res: any) => {
+    const siteUrl = (process.env.APP_URL || 'https://orbit-i.tech').replace(/\/+$/, '');
+
+    // Static, always-present pages (kept in sync with src/lib/routes.ts TAB_PATHS).
+    const staticPaths = [
+      '/',
+      '/services',
+      '/products',
+      '/featured-work',
+      '/about',
+      '/careers',
+      '/blogs',
+      '/gallery',
+      '/partners',
+      '/contact',
+    ];
+
+    const urls: { loc: string }[] = staticPaths.map((p) => ({
+      loc: `${siteUrl}${p}`,
+    }));
+
+    // Dynamic blog post URLs, generated live from current content.
+    for (const post of db.blogs || []) {
+      if (post?.slug) {
+        urls.push({ loc: `${siteUrl}/blog/${encodeURIComponent(post.slug)}` });
+      }
+    }
+
+    const xml =
+      `<?xml version="1.0" encoding="UTF-8"?>\n` +
+      `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+      urls.map((u) => `  <url>\n    <loc>${u.loc}</loc>\n  </url>`).join('\n') +
+      `\n</urlset>\n`;
+
+    res.setHeader('Content-Type', 'application/xml');
+    res.send(xml);
+  });
+
   return app;
 }
 
@@ -1277,7 +1336,9 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 // ==========================================
 async function startServer() {
   const app = await createApp();
-  const PORT = 3000;
+  // Hostinger's Node.js Web App runtime assigns a port at runtime via
+  // process.env.PORT — a hardcoded port would cause the app to fail to bind.
+  const PORT = Number(process.env.PORT) || 3000;
 
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');

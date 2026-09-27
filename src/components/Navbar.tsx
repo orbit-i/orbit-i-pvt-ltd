@@ -23,7 +23,8 @@ import {
   ChevronDown,
   ChevronRight,
   Activity,
-  FolderGit2
+  FolderGit2,
+  Handshake
 } from 'lucide-react';
 import { AuthModal } from './auth/AuthModal';
 
@@ -51,6 +52,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     { tab: 'careers', label: 'Careers', icon: GraduationCap, badge: 'Hiring' },
     { tab: 'blogs', label: 'Blogs', icon: BookOpen },
     { tab: 'gallery', label: 'Gallery', icon: Image },
+    { tab: 'partners', label: 'Partners', icon: Handshake },
     { tab: 'contact', label: 'Contact', icon: Mail },
   ];
 

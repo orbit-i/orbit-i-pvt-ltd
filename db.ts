@@ -44,7 +44,7 @@ export type RowTable = (typeof ROW_TABLES)[number];
 // Content resources that the app always replaces wholesale (see PUT
 // /api/content/:resource) — a single JSON blob per resource key is the
 // correct shape for that access pattern, not a shortcut.
-const CONTENT_KEYS = ['settings', 'services', 'products', 'blogs', 'careers', 'gallery', 'caseStudies'] as const;
+const CONTENT_KEYS = ['settings', 'services', 'products', 'blogs', 'careers', 'gallery', 'caseStudies', 'partners'] as const;
 export type ContentKey = (typeof CONTENT_KEYS)[number];
 
 // ==========================================

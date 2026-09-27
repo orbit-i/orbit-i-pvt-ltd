@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   NavigationTab,
   ServiceItem,
@@ -6,6 +6,7 @@ import {
   BlogPost,
   CareerOpening,
   GalleryItem,
+  PartnerItem,
   CaseStudy,
   ProjectTracking,
   InvoiceItem,
@@ -19,6 +20,7 @@ import {
   initialBlogs,
   initialCareers,
   initialGallery,
+  initialPartners,
   initialCaseStudies,
   initialProjects,
   initialInvoices,
@@ -38,11 +40,13 @@ import { ProductsPage } from './components/pages/ProductsPage';
 import { BlogsPage } from './components/pages/BlogsPage';
 import { CareersPage } from './components/pages/CareersPage';
 import { GalleryPage } from './components/pages/GalleryPage';
+import { PartnersPage } from './components/pages/PartnersPage';
 import { FeaturedWorkPage } from './components/pages/FeaturedWorkPage';
 import { ContactPage } from './components/pages/ContactPage';
 
 import { SuperAdminDashboard } from './components/admin/SuperAdminDashboard';
 import { ClientPortal } from './components/client/ClientPortal';
+import { pathToTab, tabToPath, parseBlogSlug } from './lib/routes';
 
 export default function App() {
   // Gates the SuperAdmin UI behind a real secret value, not a guessable word.
@@ -66,51 +70,54 @@ export default function App() {
     }
   };
 
-  // Initialize navigation tab from secret URL or default
-  const [activeTab, setActiveTab] = useState<NavigationTab>(() => {
-    if (typeof window !== 'undefined' && checkIsSecretAdminUrl()) {
-      return 'admin';
-    }
-    return 'home';
+  // Initialize navigation tab from the real URL path (or secret admin query), so a
+  // direct link like orbit-i.tech/services opens on the right page instead of
+  // always falling back to Home.
+  const [activeTab, setActiveTabState] = useState<NavigationTab>(() => {
+    if (typeof window === 'undefined') return 'home';
+    if (checkIsSecretAdminUrl()) return 'admin';
+    if (parseBlogSlug(window.location.pathname)) return 'blogs';
+    return pathToTab(window.location.pathname) ?? 'home';
   });
 
-  // Listen for URL changes
+  // The slug from a /blog/:slug deep link, read once on load so BlogsPage can
+  // open the right post automatically. BlogsPage clears this once it has used it.
+  const [initialBlogSlug, setInitialBlogSlug] = useState<string | null>(() =>
+    typeof window !== 'undefined' ? parseBlogSlug(window.location.pathname) : null
+  );
+
+  // Programmatic navigation: updates React state AND pushes a real URL to the
+  // address bar (e.g. clicking "Services" in the nav takes you to
+  // orbit-i.tech/services), so pages are linkable, shareable, and bookmarkable.
+  const setActiveTab = useCallback((tab: NavigationTab) => {
+    setActiveTabState(tab);
+    if (typeof window !== 'undefined' && tab !== 'admin') {
+      const path = tabToPath(tab);
+      if (window.location.pathname !== path) {
+        window.history.pushState({ tab }, '', path);
+      }
+    }
+  }, []);
+
+  // Keep React state in sync with the browser's Back/Forward buttons.
   useEffect(() => {
     const handleUrlChange = () => {
       if (checkIsSecretAdminUrl()) {
-        setActiveTab('admin');
-      } else {
-        const hash = window.location.hash.replace('#', '').replace('/', '');
-        const validTabs: NavigationTab[] = [
-          'home',
-          'services',
-          'products',
-          'featured',
-          'about',
-          'careers',
-          'blogs',
-          'gallery',
-          'contact',
-          'client-portal',
-        ];
-        if (validTabs.includes(hash as NavigationTab)) {
-          setActiveTab(hash as NavigationTab);
-        }
+        setActiveTabState('admin');
+        return;
       }
+      const slug = parseBlogSlug(window.location.pathname);
+      if (slug) {
+        setInitialBlogSlug(slug);
+        setActiveTabState('blogs');
+        return;
+      }
+      const tab = pathToTab(window.location.pathname);
+      if (tab) setActiveTabState(tab);
     };
 
-    window.addEventListener('hashchange', handleUrlChange);
     window.addEventListener('popstate', handleUrlChange);
-
-    // Initial check on mount
-    if (checkIsSecretAdminUrl()) {
-      setActiveTab('admin');
-    }
-
-    return () => {
-      window.removeEventListener('hashchange', handleUrlChange);
-      window.removeEventListener('popstate', handleUrlChange);
-    };
+    return () => window.removeEventListener('popstate', handleUrlChange);
   }, []);
 
   // Enforce Dark Mode Permanently
@@ -124,6 +131,7 @@ export default function App() {
   const [blogs, setBlogs] = useState<BlogPost[]>(initialBlogs);
   const [careers, setCareers] = useState<CareerOpening[]>(initialCareers);
   const [gallery, setGallery] = useState<GalleryItem[]>(initialGallery);
+  const [partners, setPartners] = useState<PartnerItem[]>(initialPartners);
   const [caseStudies, setCaseStudies] = useState<CaseStudy[]>(initialCaseStudies);
   const [projects, setProjects] = useState<ProjectTracking[]>(initialProjects);
   const [invoices, setInvoices] = useState<InvoiceItem[]>(initialInvoices);
@@ -152,6 +160,7 @@ export default function App() {
         if (data.blogs) setBlogs(data.blogs);
         if (data.careers) setCareers(data.careers);
         if (data.gallery) setGallery(data.gallery);
+        if (data.partners) setPartners(data.partners);
         if (data.caseStudies) setCaseStudies(data.caseStudies);
         if (data.settings) setSettings(data.settings);
       })
@@ -269,7 +278,12 @@ export default function App() {
         )}
 
         {activeTab === 'blogs' && (
-          <BlogsPage blogs={blogs} setActiveTab={setActiveTab} />
+          <BlogsPage
+            blogs={blogs}
+            setActiveTab={setActiveTab}
+            initialSlug={initialBlogSlug}
+            onClearInitialSlug={() => setInitialBlogSlug(null)}
+          />
         )}
 
         {activeTab === 'careers' && (
@@ -278,6 +292,10 @@ export default function App() {
 
         {activeTab === 'gallery' && (
           <GalleryPage gallery={gallery} setActiveTab={setActiveTab} />
+        )}
+
+        {activeTab === 'partners' && (
+          <PartnersPage partners={partners} setActiveTab={setActiveTab} />
         )}
 
         {activeTab === 'featured' && (
@@ -307,6 +325,8 @@ export default function App() {
             setCareers={setCareers}
             gallery={gallery}
             setGallery={setGallery}
+            partners={partners}
+            setPartners={setPartners}
             caseStudies={caseStudies}
             setCaseStudies={setCaseStudies}
             projects={projects}

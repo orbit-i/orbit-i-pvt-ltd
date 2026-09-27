@@ -36,24 +36,23 @@ export const Footer: React.FC<FooterProps> = ({
     companyName: 'ORBIT-I',
     legalEntity: 'ORBIT-I (Private) Limited',
     logoUrl: '/logo.png',
-    tagline: 'Precision Artificial Intelligence, High-Throughput Web Platforms & Custom Python Engineering.',
+    tagline: 'building ideas. Creating Impact.',
     foundedYear: '2022',
-    contactEmail: 'orbiti2026@gmail.com',
-    supportEmail: 'orbiti2026@gmail.com',
-    phone: '+92 319 0275751',
+    contactEmail: 'contactus@orbit-i.tech',
+    supportEmail: 'contactus@orbit-i.tech',
+    phone: '+92 319 0375751',
     address: 'Nawabshah, Sindh, Pakistan',
     emergencyAlert: {
       enabled: false,
       message: '',
       type: 'info',
     },
-    socials: {
-      github: 'https://github.com/orbit-i',
+    socials: 
       linkedin: 'https://www.linkedin.com/company/orbit-i-private-limited/',
       twitter: '',
-      instagram: 'https://www.instagram.com/0rbit_i?igsh=anpnbThjbnN2OGxm',
-      youtube: '',
-      facebook: 'https://www.facebook.com/share/1BCN9FuLqc/',
+      instagram: 'https://www.instagram.com/orbiti_private_limited?utm_source=qr&stkn=ZnE1c25zdG96Y3Zp',
+      tiktok: 'https://www.tiktok.com/@orbitiprivatelimited',
+      facebook: 'https://www.facebook.com/orbitiprivatelimited',
       whatsapp: 'https://whatsapp.com/channel/0029Vb8I4kvJJhzUXqEnB50J',
     },
     hostingConfigs: {
@@ -168,17 +167,7 @@ export const Footer: React.FC<FooterProps> = ({
 
             {/* Social Icons */}
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5 pt-1">
-              {currentSettings.socials?.github && (
-                <a
-                  href={currentSettings.socials.github}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label="GitHub"
-                  className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition-colors"
-                >
-                  <Github className="w-3.5 h-3.5" />
-                </a>
-              )}
+              
               {currentSettings.socials?.linkedin && (
                 <a
                   href={currentSettings.socials.linkedin}
